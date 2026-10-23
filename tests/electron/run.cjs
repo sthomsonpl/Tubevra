@@ -6,6 +6,7 @@ const { spawnSync } = require('node:child_process');
 const task = process.argv[2];
 if (
   ![
+    'adblock-smoke',
     'ui-smoke',
     'glass-probe',
     'live-smoke',

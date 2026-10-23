@@ -17,8 +17,8 @@ function entry(source, globals = {}) {
     ...globals,
   });
 }
-test('empty production catalog serializes without closures', async () => {
-  const control = entry(await buildHookEntry())({
+test('empty catalog serializes without closures', async () => {
+  const control = entry(await buildHookEntry([]))({
     document: 'empty',
     revision: 0,
     items: [],

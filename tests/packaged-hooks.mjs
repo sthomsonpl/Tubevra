@@ -14,6 +14,11 @@ if (process.platform !== 'win32' || process.arch !== 'x64')
   throw Error(
     'Packaged hook verification currently supports Windows x64 only.',
   );
+const adblock = process.argv.includes('--adblock');
+if (adblock && process.argv.includes('--live'))
+  throw Error(
+    'The Adblock package test uses local data; --live is unsupported.',
+  );
 const root = await mkdtemp(path.join(os.tmpdir(), 'tubevra-packaged-hooks-'));
 if (
   path.dirname(path.resolve(root)) !== path.resolve(os.tmpdir()) ||
@@ -30,12 +35,18 @@ try {
   );
   extractAll(path.join(appDir, 'resources/app.asar'), source);
   for (const [entry, filename] of [
-    ['tests/electron/packaged-hooks-main.ts', 'main.cjs'],
+    [
+      adblock
+        ? 'tests/electron/adblock-main.ts'
+        : 'tests/electron/packaged-hooks-main.ts',
+      'main.cjs',
+    ],
     ['src/preload/tv-preload.ts', 'tv-preload.cjs'],
   ]) {
+    if (adblock && filename === 'tv-preload.cjs') continue;
     await build({
       configFile: false,
-      plugins: [extensionBuildPlugin(fixtureCatalog)],
+      plugins: [extensionBuildPlugin(adblock ? undefined : fixtureCatalog)],
       define: {
         MAIN_WINDOW_VITE_DEV_SERVER_URL: 'undefined',
         MAIN_WINDOW_VITE_NAME: '"main_window"',
@@ -73,6 +84,7 @@ try {
   await mkdir(profile);
   const env = {
     ...process.env,
+    TUBEVRA_TEST_PACKAGED: '1',
     TUBEVRA_TEST_PROFILE: profile,
     TUBEVRA_TEST_RESULT: resultPath,
     TUBEVRA_TEST_LIVE: process.argv.includes('--live') ? '1' : '0',

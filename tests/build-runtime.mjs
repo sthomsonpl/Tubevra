@@ -2,7 +2,8 @@ import { build } from 'vite';
 import { extensionBuildPlugin } from '../build/extensions.mjs';
 await build({
   configFile: false,
-  plugins: [extensionBuildPlugin()],
+  // This fixture supplies its own page module and has no hook implementations.
+  plugins: [extensionBuildPlugin([])],
   build: {
     outDir: 'out/verification/runtime',
     lib: {

@@ -159,20 +159,19 @@ app
       await shell.executeJavaScript(
         'document.querySelector("#panel-extensions").textContent',
       ),
-      /No add-ons/,
+      /Adblock/,
     );
     assert.deepEqual(
-      (await shell.executeJavaScript('window.tubevra.getExtensions()')).value
-        .items,
-      [],
+      (
+        await shell.executeJavaScript('window.tubevra.getExtensions()')
+      ).value.items.map((item) => item.id),
+      ['adblock'],
     );
     await shell.executeJavaScript(
       `document.querySelector('[data-section="user-agents"]').click()`,
     );
-    checks.push(
-      'Extensions empty state and local IPC sender/payload validation',
-    );
-    // Test-only engine; production registry stays empty.
+    checks.push('Adblock registration and local IPC sender/payload validation');
+    // Separate test-only engine for the remaining lifecycle scenarios.
     const ts = require('typescript');
     require.extensions['.ts'] = (module, filename) =>
       module._compile(

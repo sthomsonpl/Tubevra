@@ -16,13 +16,16 @@
     "lint:fix": "oxlint --fix && oxfmt --write",
     "typecheck": "tsc --noEmit",
     "test:core": "node --test tests/core.test.cjs",
+    "test:adblock": "node --test tests/adblock.test.cjs",
     "test:ui": "node tests/electron/run.cjs ui-smoke",
     "test:glass": "node tests/electron/run.cjs glass-probe",
     "test:extensions": "node --test tests/extensions.test.cjs tests/extension-build.test.mjs",
     "test:runtime": "node --test tests/runtime.test.cjs tests/hooks.test.cjs",
     "test:hooks:electron": "node tests/build-hooks.mjs && node tests/electron/run.cjs hooks-smoke && node tests/electron/run.cjs hooks-bootstrap-smoke",
     "test:runtime:electron": "node tests/build-runtime.mjs && node tests/electron/run.cjs runtime-smoke",
-    "test:hooks:packaged": "node tests/packaged-hooks.mjs"
+    "test:hooks:packaged": "node tests/packaged-hooks.mjs",
+    "test:adblock:electron": "node tests/build-adblock.mjs && node tests/electron/run.cjs adblock-smoke",
+    "test:adblock:packaged": "node tests/packaged-hooks.mjs --adblock"
   },
   "devDependencies": {
     "@electron-forge/cli": "^8.0.1",

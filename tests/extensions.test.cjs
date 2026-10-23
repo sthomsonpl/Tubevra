@@ -44,6 +44,45 @@ async function directory(t) {
   });
   return dir;
 }
+
+test('Adblock registration preserves existing preferences and persists explicit disable', async (t) => {
+  const {
+    extensionRegistry,
+    hookManifest,
+  } = require('../src/extensions/registry.ts');
+  const dir = await directory(t);
+  await fs.writeFile(
+    path.join(dir, 'extensions.json'),
+    JSON.stringify({
+      version: 1,
+      enabled: { legacy: false },
+    }),
+  );
+  const engine = await TubervaExtensions.open(
+    dir,
+    extensionRegistry,
+    source(),
+    {},
+    () => {},
+    hookManifest,
+  );
+  t.after(() => engine.dispose());
+  const item = engine.snapshot().items.find((item) => item.id === 'adblock');
+  assert.equal(item.enabled, true);
+  assert.equal(item.name, 'Adblock');
+  assert.deepEqual(item.modes, ['tv']);
+  assert.equal(item.hooks, true);
+  assert.equal(item.main, false);
+  assert.equal(item.page, false);
+  assert.deepEqual(hookManifest, ['adblock']);
+  await engine.update({ id: 'adblock', enabled: false });
+  const reopened = await ExtensionStore.open(dir, extensionRegistry);
+  assert.equal(reopened.enabled('adblock'), false);
+  assert.deepEqual(
+    JSON.parse(await fs.readFile(path.join(dir, 'extensions.json'), 'utf8')),
+    { version: 1, enabled: { legacy: false, adblock: false } },
+  );
+});
 function source() {
   return {
     listener: null,
