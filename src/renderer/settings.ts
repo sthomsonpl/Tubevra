@@ -1,9 +1,14 @@
 import type { AppState, Result, UserAgentCommand } from '../shared/api';
+import { mountExtensions } from './extensions/settings';
 
-type SectionId = 'general' | 'tv' | 'user-agents';
+type SectionId = 'general' | 'tv' | 'user-agents' | 'extensions';
 type PresetTab = 'default' | 'user';
 
 const SECTION_META: Record<SectionId, { title: string; subtitle: string }> = {
+  extensions: {
+    title: 'Add-ons',
+    subtitle: 'Manage built-in add-ons for YouTube TV.',
+  },
   general: {
     title: 'General',
     subtitle: 'Application session and quick actions.',
@@ -114,6 +119,12 @@ export function mountSettings(root: HTMLElement) {
                 <span>User Agents</span>
                 <span id="preset-count" class="nav-badge"></span>
               </button>
+              <button type="button" class="nav-item" data-section="extensions" aria-current="false">
+                <span class="nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v4h2a3 3 0 0 1 0 6H3v4a2 2 0 0 0 2 2h4v-2a3 3 0 0 1 6 0v2h4a2 2 0 0 0 2-2v-4h-2a3 3 0 0 1 0-6h2V5a2 2 0 0 0-2-2h-4v2a3 3 0 0 1-6 0V3Z"/></svg>
+                </span>
+                <span>Add-ons</span>
+              </button>
             </nav>
           </div>
 
@@ -143,6 +154,7 @@ export function mountSettings(root: HTMLElement) {
 
           <p id="service-error" class="error-banner" role="alert" hidden></p>
 
+          <div id="panel-extensions" class="section-panel" hidden></div>
           <div id="panel-general" class="section-panel" hidden>
             <div class="widget-box">
               <div class="widget-row">
@@ -262,6 +274,7 @@ export function mountSettings(root: HTMLElement) {
   const element = <T extends HTMLElement = HTMLElement>(id: string) =>
     root.querySelector<T>(`#${id}`)!;
   const name = element<HTMLInputElement>('preset-name');
+  const extensions = mountExtensions(element('panel-extensions'));
   const value = element<HTMLTextAreaElement>('preset-value');
   const form = element<HTMLFormElement>('preset-form');
   const feedback = element('feedback');
@@ -283,6 +296,7 @@ export function mountSettings(root: HTMLElement) {
     element('section-subtitle').textContent = meta.subtitle;
     element('panel-general').hidden = section !== 'general';
     element('panel-tv').hidden = section !== 'tv';
+    element('panel-extensions').hidden = section !== 'extensions';
     element('panel-user-agents').hidden = section !== 'user-agents';
     for (const button of root.querySelectorAll<HTMLButtonElement>(
       '.nav-item[data-section]',
@@ -448,6 +462,7 @@ export function mountSettings(root: HTMLElement) {
   function render(state: AppState) {
     const wasOpen = current?.settingsOpen;
     current = state;
+    extensions.render(state.extensions);
     const showConnection =
       !state.settingsOpen && (state.loading || !!state.error);
     element('connection').hidden = !showConnection;

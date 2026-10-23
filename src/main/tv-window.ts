@@ -1,4 +1,13 @@
-import { BrowserWindow, ipcMain, session, WebContentsView } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  session,
+  WebContentsView,
+} from 'electron';
+import { TubervaExtensions } from '../extensions/tuberva-extensions';
+import { connectPage } from '../extensions/main/page-bridge';
+import { extensionRegistry } from '../extensions/registry';
 import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -41,6 +50,21 @@ export async function createTVWindow(store: UserAgentStore) {
     },
   });
   const tvSession = session.fromPartition('persist:tubevra-tv');
+  // Prepare persistence and the single network owner before creating/loading TV.
+  let extensions: TubervaExtensions;
+  let notifyExtensions = () => {};
+  try {
+    extensions = await TubervaExtensions.open(
+      app.getPath('userData'),
+      extensionRegistry,
+      tvSession.webRequest,
+      {},
+      () => notifyExtensions(),
+    );
+  } catch (cause) {
+    mainWindow.destroy();
+    throw cause;
+  }
   tvSession.setPermissionRequestHandler((contents, permission, callback) => {
     callback(permission === 'fullscreen' && isTVURL(contents.getURL()));
   });
@@ -103,6 +127,7 @@ export async function createTVWindow(store: UserAgentStore) {
   let loading = true;
   const state = (): AppState => ({
     mode: 'tv',
+    extensions: extensions.snapshot(),
     userAgents: store.snapshot(),
     playbackFullscreen,
     settingsOpen,
@@ -117,9 +142,20 @@ export async function createTVWindow(store: UserAgentStore) {
     }
   };
   const syncVisibility = () => {
+    // Extension errors are separate from YouTube load errors.
     if (mainWindow.isDestroyed()) return;
     youtube.setVisible(!settingsOpen && !error && !loading);
     toolbar.setVisible(!playbackFullscreen);
+  };
+  const pageBridge = connectPage(ipcMain, contents, extensions);
+  notifyExtensions = () => {
+    publish();
+    if (!mainWindow.isDestroyed())
+      mainWindow.webContents.send(
+        IPC.extensionsStateChanged,
+        extensions.snapshot(),
+      );
+    pageBridge.publish();
   };
   const reportError = (message: string) => {
     error = message;
@@ -198,6 +234,32 @@ export async function createTVWindow(store: UserAgentStore) {
     assertShell(event);
     if (args.length) return { ok: false, error: 'Unexpected arguments.' };
     return { ok: true, value: state() };
+  });
+  ipcMain.handle(IPC.getExtensions, (event, ...args) => {
+    assertShell(event);
+    return args.length
+      ? { ok: false, error: 'Unexpected arguments.' }
+      : { ok: true, value: extensions.snapshot() };
+  });
+  ipcMain.handle(IPC.setExtensionEnabled, async (event, ...args) => {
+    assertShell(event);
+    try {
+      if (args.length !== 1)
+        throw new Error('Expected one extension operation.');
+      return { ok: true, value: await extensions.update(args[0]) };
+    } catch (cause) {
+      return {
+        ok: false,
+        error:
+          cause instanceof Error
+            ? cause.message
+            : 'Extension operation failed.',
+      };
+    }
+  });
+  handle(IPC.reloadTV, async (...args) => {
+    if (args.length) throw new Error('Unexpected arguments.');
+    await loadTV(isTVURL(contents.getURL()) ? contents.getURL() : TV_HOME);
   });
   ipcMain.handle(IPC.setSettingsOpen, (event, ...args): Result<AppState> => {
     assertShell(event);
@@ -316,8 +378,15 @@ export async function createTVWindow(store: UserAgentStore) {
   mainWindow.webContents.session.setPermissionCheckHandler(() => false);
 
   mainWindow.on('closed', () => {
+    pageBridge.dispose();
+    void extensions
+      .dispose()
+      .catch((cause) => console.error('Extension shutdown failed:', cause));
     for (const channel of [
       IPC.getState,
+      IPC.getExtensions,
+      IPC.setExtensionEnabled,
+      IPC.reloadTV,
       IPC.updateUserAgents,
       IPC.navigate,
       IPC.setSettingsOpen,

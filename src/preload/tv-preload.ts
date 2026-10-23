@@ -1,3 +1,4 @@
+import { startPageRuntime } from '../extensions/page/bootstrap';
 import { ipcRenderer } from 'electron';
 import { IPC } from '../shared/api';
 
@@ -51,3 +52,5 @@ document.addEventListener(
 
 // Toolbar requests still pass through the actual document's IME/focus guard.
 ipcRenderer.on(IPC.requestTVBack, requestBack);
+
+startPageRuntime();

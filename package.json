@@ -17,7 +17,10 @@
     "typecheck": "tsc --noEmit",
     "test:core": "node --test tests/core.test.cjs",
     "test:ui": "node tests/electron/run.cjs ui-smoke",
-    "test:glass": "node tests/electron/run.cjs glass-probe"
+    "test:glass": "node tests/electron/run.cjs glass-probe",
+    "test:extensions": "node --test tests/extensions.test.cjs",
+    "test:runtime": "node --test tests/runtime.test.cjs",
+    "test:runtime:electron": "node tests/build-runtime.mjs && node tests/electron/run.cjs runtime-smoke"
   },
   "devDependencies": {
     "@electron-forge/cli": "^8.0.1",

@@ -6,6 +6,7 @@ const {
   webContents,
   session,
   desktopCapturer,
+  ipcMain,
 } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -120,6 +121,188 @@ app
     );
     assert.equal((await state()).userAgents.presets.length, 7);
     checks.push('isolated production preload and TV view');
+    const getExtensions = ipcMain._invokeHandlers.get('tubevra:extensions:get');
+    const setExtension = ipcMain._invokeHandlers.get(
+      'tubevra:extensions:set-enabled',
+    );
+    const reloadTV = ipcMain._invokeHandlers.get('tubevra:reload-tv');
+    const trusted = { sender: shell, senderFrame: shell.mainFrame };
+    for (const handler of [getExtensions, setExtension, reloadTV]) {
+      for (const event of [
+        { sender: tv, senderFrame: tv.mainFrame },
+        { sender: shell, senderFrame: { url: shell.getURL() } },
+        { sender: shell, senderFrame: { url: 'https://example.com' } },
+      ]) {
+        await assert.rejects(async () => handler(event), /Untrusted/);
+      }
+    }
+    assert.equal(getExtensions(trusted, 'extra').ok, false);
+    for (const command of [
+      null,
+      {},
+      { id: 'missing', enabled: true },
+      { id: 'x', enabled: 'true' },
+    ]) {
+      assert.equal((await setExtension(trusted, command)).ok, false);
+    }
+    assert.equal((await reloadTV(trusted, 'extra')).ok, false);
+    await shell.executeJavaScript(
+      `document.querySelector('[data-section="extensions"]').click()`,
+    );
+    assert.match(
+      await shell.executeJavaScript(
+        'document.querySelector("#panel-extensions").textContent',
+      ),
+      /No add-ons/,
+    );
+    assert.deepEqual(
+      (await shell.executeJavaScript('window.tubevra.getExtensions()')).value
+        .items,
+      [],
+    );
+    await shell.executeJavaScript(
+      `document.querySelector('[data-section="user-agents"]').click()`,
+    );
+    checks.push(
+      'Extensions empty state and local IPC sender/payload validation',
+    );
+    // Test-only engine; production registry stays empty.
+    const ts = require('typescript');
+    require.extensions['.ts'] = (module, filename) =>
+      module._compile(
+        ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
+          compilerOptions: {
+            module: ts.ModuleKind.CommonJS,
+            target: ts.ScriptTarget.ES2022,
+            esModuleInterop: true,
+          },
+          fileName: filename,
+        }).outputText,
+        filename,
+      );
+    const {
+      TubervaExtensions,
+    } = require('../../src/extensions/tuberva-extensions.ts');
+    let failStart = false;
+    const engine = await TubervaExtensions.open(
+      path.join(profile, 'extensions-ui-test'),
+      [
+        {
+          id: 'sample',
+          name: 'UI sample',
+          description: 'Test module',
+          modes: ['tv'],
+          main: true,
+          page: true,
+          defaultEnabled: false,
+        },
+      ],
+      { onBeforeRequest() {} },
+      {
+        sample: () => {
+          if (failStart) throw Error('Test start failure');
+          return () => {};
+        },
+      },
+    );
+    // Continue after the production document revision used by this renderer.
+    while (engine.snapshot().revision <= (await state()).extensions.revision)
+      engine.resetPage();
+    const notify = () =>
+      shell.send('tubevra:extensions:state-changed', engine.snapshot());
+    ipcMain.removeHandler('tubevra:extensions:set-enabled');
+    ipcMain.handle(
+      'tubevra:extensions:set-enabled',
+      async (_event, command) => {
+        await engine.update(command);
+        notify();
+        return { ok: true, value: engine.snapshot() };
+      },
+    );
+    await shell.executeJavaScript(
+      `document.querySelector('[data-section="extensions"]').click()`,
+    );
+    notify();
+    const panelText = () =>
+      shell.executeJavaScript(
+        'document.querySelector("#panel-extensions").textContent',
+      );
+    const toggle = () =>
+      shell.executeJavaScript(
+        'document.querySelector("#panel-extensions input").click()',
+      );
+    await waitFor(
+      async () => (await panelText()).includes('UI sample'),
+      'sample UI',
+    );
+    await toggle();
+    await waitFor(
+      async () => (await panelText()).includes('Starting'),
+      'actual starting state',
+    );
+    await engine.reportPage({
+      id: 'sample',
+      revision: engine.snapshot().revision,
+      status: 'active',
+      error: null,
+    });
+    notify();
+    await waitFor(
+      async () => (await panelText()).includes('Active'),
+      'runtime confirmation',
+    );
+    await shell.executeJavaScript('window.tubevra.setSettingsOpen(true)');
+    await capture(win, 'extensions');
+    await toggle();
+    await waitFor(
+      async () => (await panelText()).includes('Disabled'),
+      'disabled sample',
+    );
+    failStart = true;
+    await toggle();
+    await waitFor(
+      async () => (await panelText()).includes('Test start failure'),
+      'visible start error',
+    );
+    await toggle();
+    await waitFor(
+      async () => (await panelText()).includes('Disabled'),
+      'disable failed sample',
+    );
+    failStart = false;
+    await toggle();
+    await waitFor(
+      async () => (await panelText()).includes('Starting'),
+      'reenabled sample',
+    );
+    await engine.reportPage({
+      id: 'sample',
+      revision: engine.snapshot().revision,
+      status: 'reload-required',
+      error: null,
+    });
+    notify();
+    await waitFor(
+      async () => (await panelText()).includes('Reload required'),
+      'reload notice',
+    );
+    const beforeReload = requests.length;
+    await shell.executeJavaScript(
+      'document.querySelector("#panel-extensions button").click()',
+    );
+    await waitFor(() => requests.length > beforeReload, 'explicit reload');
+    await idle();
+    await engine.dispose();
+    ipcMain.removeHandler('tubevra:extensions:set-enabled');
+    ipcMain.handle('tubevra:extensions:set-enabled', setExtension);
+    shell.send('tubevra:extensions:state-changed', (await state()).extensions);
+    await shell.executeJavaScript(
+      `document.querySelector('[data-section="user-agents"]').click()`,
+    );
+    checks.push(
+      'Extensions test engine: toggles, runtime status, failure, disable and explicit reload',
+    );
+    await shell.executeJavaScript('window.tubevra.setSettingsOpen(false)');
     const initialToolbarBounds = win.contentView.children
       .find((view) => view.webContents === toolbar)
       .getBounds();
@@ -278,6 +461,10 @@ app
     // Resizing the test window can change native focus on Windows.
     win.focus();
     tv.focus();
+    // Synchronize the newly visible native view with a rendered frame before input.
+    await tv.executeJavaScript(
+      'new Promise(resolve => requestAnimationFrame(() => resolve(document.hasFocus())))',
+    );
     await toolbar.executeJavaScript('document.querySelector("#back").click()');
     await waitFor(
       async () => (await tv.executeJavaScript('window.backCount')) === 1,
