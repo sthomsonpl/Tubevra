@@ -79,6 +79,8 @@ export async function createTVWindow(store: UserAgentStore) {
     webPreferences: {
       preload: path.join(__dirname, 'tv-preload.cjs'),
       session: tvSession,
+      // Keep playback active when the window is minimized or covered.
+      backgroundThrottling: false,
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,

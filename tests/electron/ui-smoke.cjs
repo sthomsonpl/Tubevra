@@ -22,10 +22,26 @@ const checks = [];
 const errors = [];
 const requests = [];
 let failNextLoad = false;
+// A local silent WAV exercises the real media clock without network or codecs.
+const audio = Buffer.alloc(44 + 8000 * 2 * 30);
+audio.write('RIFF', 0);
+audio.writeUInt32LE(audio.length - 8, 4);
+audio.write('WAVEfmt ', 8);
+audio.writeUInt32LE(16, 16);
+audio.writeUInt16LE(1, 20);
+audio.writeUInt16LE(1, 22);
+audio.writeUInt32LE(8000, 24);
+audio.writeUInt32LE(16000, 28);
+audio.writeUInt16LE(2, 32);
+audio.writeUInt16LE(16, 34);
+audio.write('data', 36);
+audio.writeUInt32LE(audio.length - 44, 40);
 const fixture = `<!doctype html><meta charset="utf-8"><title>Local TV fixture</title>
 <style>body{margin:0;background:linear-gradient(120deg,#142837,#466360 45%,#392d4c);color:white;font:20px sans-serif;height:100vh}h1{padding:60px 60px 0}input{margin:30px 60px;padding:10px}#player{background:#151515;width:300px;height:180px;margin:0 60px}footer{position:absolute;bottom:0;height:110px;width:100%;background:repeating-linear-gradient(90deg,#497e9d 0 12px,#16334b 12px 24px)}</style>
 <h1>Local TV integration fixture</h1><input id="search" aria-label="Search"/><video id="player"></video><footer></footer>
-<script>window.backCount=0;window.keys=[];document.addEventListener('keydown',e=>{window.keys.push(e.key);if(e.key==='Escape')window.backCount++});</script>`;
+<script>window.backCount=0;window.keys=[];document.addEventListener('keydown',e=>{window.keys.push(e.key);if(e.key==='Escape')window.backCount++});
+// Model a player that pauses when Electron reports its page as hidden.
+document.addEventListener('visibilitychange',()=>{if(document.hidden)document.querySelector('#player').pause()});</script>`;
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('preload-error', (_event, filename, error) =>
@@ -58,6 +74,11 @@ app
     await session
       .fromPartition('persist:tubevra-tv')
       .protocol.handle('https', (request) => {
+        if (new URL(request.url).pathname === '/tv/test-audio.wav') {
+          return new Response(audio, {
+            headers: { 'content-type': 'audio/wav' },
+          });
+        }
         requests.push({
           url: request.url,
           ua: request.headers.get('user-agent'),
@@ -524,6 +545,50 @@ app
     );
     checks.push(
       'Back emits Escape; input and simulated composition guards on local fixture',
+    );
+
+    await tv.executeJavaScript(
+      `document.querySelector('#player').src = 'https://www.youtube.com/tv/test-audio.wav';
+      document.querySelector('#player').play()`,
+      true,
+    );
+    await waitFor(
+      async () =>
+        (await tv.executeJavaScript(
+          'document.querySelector("#player").currentTime',
+        )) > 0,
+      'local media playback',
+    );
+    const playbackState = () =>
+      tv.executeJavaScript(`({
+        visibility: document.visibilityState,
+        paused: document.querySelector('#player').paused,
+        time: document.querySelector('#player').currentTime,
+      })`);
+    win.minimize();
+    await waitFor(() => win.isMinimized(), 'native window minimization');
+    // Wait in the main process so renderer throttling cannot hide a failure.
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    const minimized = await playbackState();
+    assert.equal(minimized.visibility, 'visible');
+    assert.equal(minimized.paused, false);
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    assert.ok((await playbackState()).time > minimized.time + 0.5);
+    win.restore();
+    await waitFor(() => !win.isMinimized(), 'native window restoration');
+    assert.equal((await playbackState()).paused, false);
+    await tv.executeJavaScript('document.querySelector("#player").pause()');
+    win.minimize();
+    await waitFor(() => win.isMinimized(), 'paused window minimization');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    assert.equal((await playbackState()).paused, true);
+    win.restore();
+    await waitFor(() => !win.isMinimized(), 'paused window restoration');
+    assert.equal((await playbackState()).paused, true);
+    win.focus();
+    tv.focus();
+    checks.push(
+      'media keeps playing while minimized; manual pause survives minimize/restore',
     );
 
     const toolbarView = win.contentView.children.find(
