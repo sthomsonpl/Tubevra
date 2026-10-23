@@ -50,6 +50,7 @@ export async function createTVWindow(store: UserAgentStore) {
     height: 800,
     minWidth: 640,
     minHeight: 540,
+    icon: path.join(app.getAppPath(), 'assets', 'icon', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
