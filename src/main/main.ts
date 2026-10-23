@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, Menu } from 'electron';
 import started from 'electron-squirrel-startup';
 import { UserAgentStore } from './user-agent-store';
 import { createTVWindow } from './tv-window';
@@ -6,6 +6,7 @@ import { createTVWindow } from './tv-window';
 if (started || !app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  Menu.setApplicationMenu(null);
   app.on('second-instance', () => {
     const window = BrowserWindow.getAllWindows()[0];
     if (window?.isMinimized()) window.restore();
