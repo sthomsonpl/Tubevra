@@ -4,6 +4,7 @@ import type { AppState, TubevraAPI } from '../shared/api';
 import type { ExtensionsState } from '../extensions/types';
 
 const api: TubevraAPI = {
+  openProjectGitHub: () => ipcRenderer.invoke(IPC.openProjectGitHub),
   reloadTV: () => ipcRenderer.invoke(IPC.reloadTV),
   getExtensions: () => ipcRenderer.invoke(IPC.getExtensions),
   setExtensionEnabled: (command) =>

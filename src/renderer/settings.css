@@ -968,6 +968,12 @@ fieldset {
   font-size: 11.5px;
 }
 
+.project-link {
+  text-decoration: none;
+  flex: none;
+  outline-offset: 4px;
+}
+
 .primary {
   color: var(--primary-fg);
   background: var(--primary-bg);

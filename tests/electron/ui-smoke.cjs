@@ -9,6 +9,7 @@ const {
   ipcMain,
   screen,
   nativeImage,
+  shell: externalShell,
 } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -157,8 +158,16 @@ app
       'tubevra:extensions:set-enabled',
     );
     const reloadTV = ipcMain._invokeHandlers.get('tubevra:reload-tv');
+    const openProjectGitHub = ipcMain._invokeHandlers.get(
+      'tubevra:open-project-github',
+    );
     const trusted = { sender: shell, senderFrame: shell.mainFrame };
-    for (const handler of [getExtensions, setExtension, reloadTV]) {
+    for (const handler of [
+      getExtensions,
+      setExtension,
+      reloadTV,
+      openProjectGitHub,
+    ]) {
       for (const event of [
         { sender: tv, senderFrame: tv.mainFrame },
         { sender: shell, senderFrame: { url: shell.getURL() } },
@@ -177,6 +186,10 @@ app
       assert.equal((await setExtension(trusted, command)).ok, false);
     }
     assert.equal((await reloadTV(trusted, 'extra')).ok, false);
+    assert.equal(
+      (await openProjectGitHub(trusted, 'https://example.com')).ok,
+      false,
+    );
     await shell.executeJavaScript(
       `document.querySelector('[data-section="extensions"]').click()`,
     );
@@ -511,6 +524,59 @@ app
 
     await click(toolbar, 'settings');
     await waitFor(async () => (await state()).settingsOpen, 'settings open');
+    await shell.executeJavaScript(
+      `document.querySelector('[data-section="about"]').click()`,
+    );
+    assert.deepEqual(
+      await shell.executeJavaScript(`[
+        document.querySelector('#panel-about').hidden,
+        document.querySelector('#panel-user-agents').hidden,
+        document.querySelector('#app-version').textContent,
+        document.querySelector('#project-github').href
+      ]`),
+      [false, true, app.getVersion(), 'https://github.com/sthomsonpl/Tubevra'],
+    );
+    const openExternal = externalShell.openExternal;
+    const opened = [];
+    try {
+      externalShell.openExternal = async (url) => {
+        opened.push(url);
+      };
+      await click(shell, 'project-github');
+      await waitFor(() => opened.length === 1, 'project link opened');
+      assert.deepEqual(opened, ['https://github.com/sthomsonpl/Tubevra']);
+      externalShell.openExternal = async () => {
+        throw new Error('Browser unavailable');
+      };
+      await click(shell, 'project-github');
+      await waitFor(
+        () =>
+          shell.executeJavaScript(
+            `document.querySelector('#about-feedback').textContent === 'Browser unavailable'`,
+          ),
+        'visible browser failure',
+      );
+      externalShell.openExternal = async () => {};
+      await click(shell, 'project-github');
+    } finally {
+      externalShell.openExternal = openExternal;
+    }
+    await capture(win, 'about');
+    win.setSize(640, 680);
+    await capture(win, 'about-compact');
+    assert.equal(
+      await shell.executeJavaScript(
+        'document.documentElement.scrollWidth <= innerWidth',
+      ),
+      true,
+    );
+    win.setSize(1280, 800);
+    await shell.executeJavaScript(
+      `document.querySelector('[data-section="user-agents"]').click()`,
+    );
+    checks.push(
+      'About version from Electron, fixed external GitHub link, sender validation and visible browser failure',
+    );
     assert.equal(
       await shell.executeJavaScript(
         'document.querySelector("#preset-value").readOnly',

@@ -1,10 +1,15 @@
 import type { AppState, Result, UserAgentCommand } from '../shared/api';
+import { PROJECT_GITHUB_URL } from '../shared/api';
 import { mountExtensions } from './extensions/settings';
 
-type SectionId = 'general' | 'tv' | 'user-agents' | 'extensions';
+type SectionId = 'general' | 'tv' | 'user-agents' | 'extensions' | 'about';
 type PresetTab = 'default' | 'user';
 
 const SECTION_META: Record<SectionId, { title: string; subtitle: string }> = {
+  about: {
+    title: 'About',
+    subtitle: 'Application version and project information.',
+  },
   extensions: {
     title: 'Add-ons',
     subtitle: 'Manage built-in add-ons for YouTube TV.',
@@ -125,6 +130,12 @@ export function mountSettings(root: HTMLElement) {
                 </span>
                 <span>Add-ons</span>
               </button>
+              <button type="button" class="nav-item" data-section="about" aria-current="false">
+                <span class="nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/></svg>
+                </span>
+                <span>About</span>
+              </button>
             </nav>
           </div>
 
@@ -155,6 +166,30 @@ export function mountSettings(root: HTMLElement) {
           <p id="service-error" class="error-banner" role="alert" hidden></p>
 
           <div id="panel-extensions" class="section-panel" hidden></div>
+          <div id="panel-about" class="section-panel" hidden>
+            <div class="widget-box">
+              <div class="widget-row">
+                <span class="row-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/></svg>
+                </span>
+                <div class="row-copy">
+                  <strong>Tubevra</strong>
+                  <p>Version <span id="app-version">—</span></p>
+                </div>
+              </div>
+              <div class="widget-row">
+                <span class="row-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M9 15 15 9m-5-3 1-1a5 5 0 0 1 7 7l-1 1m-3 5-1 1a5 5 0 0 1-7-7l1-1"/></svg>
+                </span>
+                <div class="row-copy">
+                  <strong>GitHub</strong>
+                  <p>sthomsonpl/Tubevra</p>
+                </div>
+                <a id="project-github" class="secondary compact-btn project-link" href="${PROJECT_GITHUB_URL}" aria-label="Open Tubevra on GitHub in your browser">Open GitHub ↗</a>
+              </div>
+            </div>
+            <p id="about-feedback" class="feedback error" role="alert"></p>
+          </div>
           <div id="panel-general" class="section-panel" hidden>
             <div class="widget-box">
               <div class="widget-row">
@@ -297,6 +332,7 @@ export function mountSettings(root: HTMLElement) {
     element('panel-general').hidden = section !== 'general';
     element('panel-tv').hidden = section !== 'tv';
     element('panel-extensions').hidden = section !== 'extensions';
+    element('panel-about').hidden = section !== 'about';
     element('panel-user-agents').hidden = section !== 'user-agents';
     for (const button of root.querySelectorAll<HTMLButtonElement>(
       '.nav-item[data-section]',
@@ -462,6 +498,7 @@ export function mountSettings(root: HTMLElement) {
   function render(state: AppState) {
     const wasOpen = current?.settingsOpen;
     current = state;
+    element('app-version').textContent = state.version;
     extensions.render(state.extensions);
     const showConnection =
       !state.settingsOpen && (state.loading || !!state.error);
@@ -557,6 +594,17 @@ export function mountSettings(root: HTMLElement) {
   element('go-user-agents').addEventListener('click', () =>
     showSection('user-agents'),
   );
+  element('project-github').addEventListener('click', async (event) => {
+    event.preventDefault();
+    element('about-feedback').textContent = '';
+    try {
+      const result = await window.tubevra.openProjectGitHub();
+      if (!result.ok) element('about-feedback').textContent = result.error;
+    } catch {
+      element('about-feedback').textContent =
+        'Cannot communicate with Tubevra.';
+    }
+  });
   element('reload-home').addEventListener('click', () => {
     void run(() => window.tubevra.navigate('home'));
   });

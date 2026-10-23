@@ -4,6 +4,7 @@ import {
   ipcMain,
   screen,
   session,
+  shell,
   WebContentsView,
 } from 'electron';
 import { starts as mainStarts } from '../extensions/main/implementations';
@@ -13,7 +14,7 @@ import { extensionRegistry, hookManifest } from '../extensions/registry';
 import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { IPC } from '../shared/api';
+import { IPC, PROJECT_GITHUB_URL } from '../shared/api';
 import type { AppState, Result } from '../shared/api';
 import type { UserAgentStore } from './user-agent-store';
 import { selectTVDisplay } from './tv-display';
@@ -145,6 +146,7 @@ export async function createTVWindow(store: UserAgentStore) {
   let settingsOpen = false;
   let loading = true;
   const state = (): AppState => ({
+    version: app.getVersion(),
     mode: 'tv',
     extensions: extensions.snapshot(),
     userAgents: store.snapshot(),
@@ -299,6 +301,23 @@ export async function createTVWindow(store: UserAgentStore) {
     if (args.length) return { ok: false, error: 'Unexpected arguments.' };
     return { ok: true, value: state() };
   });
+  ipcMain.handle(
+    IPC.openProjectGitHub,
+    async (event, ...args): Promise<Result<null>> => {
+      assertShell(event);
+      if (args.length) return { ok: false, error: 'Unexpected arguments.' };
+      try {
+        await shell.openExternal(PROJECT_GITHUB_URL);
+        return { ok: true, value: null };
+      } catch (cause) {
+        return {
+          ok: false,
+          error:
+            cause instanceof Error ? cause.message : 'Could not open GitHub.',
+        };
+      }
+    },
+  );
   ipcMain.handle(IPC.getExtensions, (event, ...args) => {
     assertShell(event);
     return args.length
@@ -451,6 +470,7 @@ export async function createTVWindow(store: UserAgentStore) {
       .catch((cause) => console.error('Extension shutdown failed:', cause));
     for (const channel of [
       IPC.getState,
+      IPC.openProjectGitHub,
       IPC.getExtensions,
       IPC.setExtensionEnabled,
       IPC.reloadTV,

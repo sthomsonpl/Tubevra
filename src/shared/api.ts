@@ -19,6 +19,7 @@ export type UserAgentCommand =
   | { type: 'remove'; id: string; replacementId?: string };
 
 export interface AppState {
+  version: string;
   mode: 'tv';
   extensions: ExtensionsState;
   userAgents: UserAgentState;
@@ -42,6 +43,7 @@ export interface ExtensionsAPI {
 }
 
 export interface TubevraAPI extends ExtensionsAPI {
+  openProjectGitHub(): Promise<Result<null>>;
   reloadTV(): Promise<Result<AppState>>;
   getState(): Promise<Result<AppState>>;
   updateUserAgents(command: UserAgentCommand): Promise<Result<AppState>>;
@@ -51,6 +53,7 @@ export interface TubevraAPI extends ExtensionsAPI {
 }
 
 export const IPC = Object.freeze({
+  openProjectGitHub: 'tubevra:open-project-github',
   getState: 'tubevra:get-state',
   reloadTV: 'tubevra:reload-tv',
   updateUserAgents: 'tubevra:update-user-agents',
@@ -63,3 +66,5 @@ export const IPC = Object.freeze({
   setExtensionEnabled: 'tubevra:extensions:set-enabled',
   extensionsStateChanged: 'tubevra:extensions:state-changed',
 });
+
+export const PROJECT_GITHUB_URL = 'https://github.com/sthomsonpl/Tubevra';
