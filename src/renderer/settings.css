@@ -365,24 +365,131 @@
 }
 
 /* Panels */
+.settings-dialog {
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 24px;
+  overflow-y: auto;
+  color: var(--text-main);
+  background: var(--bg-frame);
+  border: 1px solid var(--border-widget);
+  border-radius: 14px;
+  box-shadow: 0 24px 80px #0009;
+}
+
+.settings-dialog::backdrop {
+  background: #0009;
+  backdrop-filter: blur(4px);
+}
+
+.settings-dialog form > h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.settings-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.settings-dialog-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.settings-dialog-field select {
+  display: block;
+  margin-top: 8px;
+}
+
+.settings-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 24px;
+}
+
 #panel-extensions {
   min-height: 0;
   overflow-y: auto;
   overflow-wrap: anywhere;
 }
 
-#panel-extensions label {
+.extensions-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.settings-page .widget-toggle {
+  position: relative;
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  flex: none;
+  padding: 5px;
+  cursor: pointer;
+}
+
+.widget-toggle input[type='checkbox'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.widget-toggle-track {
+  width: 34px;
+  height: 20px;
+  padding: 3px;
+  border-radius: 20px;
+  background: #ffffff20;
+}
+
+.widget-toggle-track::before {
+  content: '';
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.widget-toggle input:checked + .widget-toggle-track {
+  background: var(--accent);
+}
+
+.widget-toggle input:checked + .widget-toggle-track::before {
+  transform: translateX(14px);
+  background: #182114;
+}
+
+.widget-toggle input:focus-visible + .widget-toggle-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.widget-toggle:has(input:disabled) {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#panel-extensions > .widget-box {
   flex: none;
 }
 
-#panel-extensions input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  accent-color: var(--accent);
+#panel-extensions > .feedback:empty {
+  display: none;
 }
 
 .section-panel {

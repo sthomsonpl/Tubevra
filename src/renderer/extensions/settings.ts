@@ -1,16 +1,23 @@
 import type { ExtensionsState } from '../../extensions/types';
+import { createWidgetRow, createWidgetToggle } from '../widgets';
 
 export function mountExtensions(root: HTMLElement) {
   const feedback = document.createElement('p');
   feedback.className = 'feedback';
   feedback.setAttribute('role', 'status');
   const list = document.createElement('div');
+  list.className = 'widget-box';
+  list.hidden = true;
+  const empty = document.createElement('p');
+  empty.className = 'extensions-empty';
+  empty.textContent = 'No add-ons are available yet.';
+  empty.hidden = true;
   const reload = document.createElement('button');
   reload.type = 'button';
   reload.className = 'secondary';
   reload.textContent = 'Reload YouTube TV';
   reload.hidden = true;
-  root.append(feedback, list, reload);
+  root.append(feedback, empty, list, reload);
   let current: ExtensionsState | null = null;
   let busy = false;
   let operationError = '';
@@ -24,25 +31,15 @@ export function mountExtensions(root: HTMLElement) {
     if (current && state.revision < current.revision) return;
     current = state;
     list.replaceChildren();
+    list.hidden = !state.items.length;
+    empty.hidden = !!state.items.length;
     reload.hidden = !state.items.some((item) => item.reloadRequired);
     reload.disabled = busy;
     feedback.textContent = [state.error, operationError]
       .filter(Boolean)
       .join(' ');
-    if (!state.items.length) {
-      const empty = document.createElement('p');
-      empty.textContent = 'No add-ons are available yet.';
-      list.append(empty);
-    }
     for (const item of state.items) {
-      const row = document.createElement('div');
-      row.className = 'widget-box widget-row';
-      const copy = document.createElement('div');
-      copy.className = 'row-copy';
-      const name = document.createElement('strong');
-      name.textContent = item.name;
-      const description = document.createElement('p');
-      description.textContent = item.description;
+      const { row, copy } = createWidgetRow(item.name, item.description);
       const status = document.createElement('p');
       status.setAttribute('role', 'status');
       status.textContent = [
@@ -57,13 +54,11 @@ export function mountExtensions(root: HTMLElement) {
       ]
         .filter(Boolean)
         .join(': ');
-      const label = document.createElement('label');
-      const toggle = document.createElement('input');
-      toggle.type = 'checkbox';
-      toggle.checked = item.enabled;
+      const { label, input: toggle } = createWidgetToggle(
+        item.name,
+        item.enabled,
+      );
       toggle.disabled = busy || !item.modes.includes('tv');
-      toggle.setAttribute('aria-label', `Enable ${item.name}`);
-      label.append(toggle, ' Enabled');
       toggle.addEventListener('change', async () => {
         const enabled = toggle.checked;
         busy = true;
@@ -83,8 +78,8 @@ export function mountExtensions(root: HTMLElement) {
           render(current!);
         }
       });
-      copy.append(name, description, status);
-      row.append(copy, label);
+      copy.append(status);
+      row.append(label);
       list.append(row);
     }
   }
