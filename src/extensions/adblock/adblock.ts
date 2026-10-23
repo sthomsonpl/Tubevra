@@ -4,7 +4,7 @@ export const adblock = {
   id: 'adblock',
   name: 'Adblock',
   description:
-    'Removes confirmed YouTube TV player ad data. Feed and Shorts ads are not yet supported.',
+    'Removes YouTube TV player ad data and marked feed ad slots, including banners, rows, continuations and recommendations. Shorts ads are not supported.',
   modes: ['tv'],
   defaultEnabled: true,
   modules: { hooks: './adblock/hooks.ts' },

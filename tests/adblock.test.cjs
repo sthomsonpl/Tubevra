@@ -124,39 +124,81 @@ test('primitives, arrays, incomplete and nested player structures remain untouch
   r.control.dispose();
 });
 
-test('unconfirmed feed, continuation, secondary navigation and Shorts ads remain untouched', () => {
-  const r = runtime();
-  const items = [
-    { videoRenderer: { videoId: 'fixture' } },
-    { adSlotRenderer: {} },
-  ];
-  for (const input of [
-    {
-      contents: {
-        tvBrowseRenderer: {
+const shelf = (items) => ({
+  shelfRenderer: {
+    content: {
+      horizontalListRenderer: { items, continuations: [{ token: 'kept' }] },
+    },
+  },
+});
+const home = (items) => ({
+  contents: {
+    tvBrowseRenderer: {
+      content: {
+        tvSurfaceContentRenderer: {
           content: {
-            tvSurfaceContentRenderer: {
-              content: { sectionListRenderer: { contents: items } },
-            },
+            sectionListRenderer: { contents: items, trackingParams: 'kept' },
           },
         },
       },
     },
-    {
+  },
+});
+
+test('feed removes a banner and row slots, preserves content and requires reload after disabling', () => {
+  const r = runtime();
+  const tile = { tileRenderer: { videoId: 'fixture' } };
+  assert.deepEqual(
+    r.parse(
+      home([
+        { adSlotRenderer: {} },
+        shelf([tile, { adSlotRenderer: {} }, tile]),
+      ]),
+    ),
+    home([shelf([tile, tile])]),
+  );
+  assert.match(r.control.drain().at(-1).reloadReason, /changed feed data/);
+  r.toggle(1, false);
+  assert.ok(r.control.drain().at(-1).reloadReason);
+  r.control.dispose();
+});
+
+test('continuations, recommendations and secondary sections preserve metadata', () => {
+  const tile = { tileRenderer: {} };
+  for (const wrap of [
+    (items) => ({
       continuationContents: {
-        sectionListContinuation: { contents: items },
-        horizontalListContinuation: { items },
+        sectionListContinuation: {
+          contents: [shelf(items)],
+          continuations: ['kept'],
+        },
       },
-    },
-    {
+    }),
+    (items) => ({
+      continuationContents: {
+        horizontalListContinuation: { items, continuations: ['kept'] },
+      },
+    }),
+    (items) => ({
+      contents: { sectionListRenderer: { contents: [shelf(items)] } },
+    }),
+    (items) => ({
       contents: {
         singleColumnWatchNextResults: {
-          pivot: {
-            sectionListRenderer: {
-              contents: [
+          pivot: { sectionListRenderer: { contents: [shelf(items)] } },
+        },
+      },
+    }),
+    (items) => ({
+      contents: {
+        tvBrowseRenderer: {
+          content: {
+            tvSecondaryNavRenderer: {
+              sections: [
                 {
-                  shelfRenderer: {
-                    content: { horizontalListRenderer: { items } },
+                  sectionListRenderer: {
+                    contents: [shelf(items)],
+                    title: 'kept',
                   },
                 },
               ],
@@ -164,20 +206,71 @@ test('unconfirmed feed, continuation, secondary navigation and Shorts ads remain
           },
         },
       },
-    },
-    { tvSecondaryNavRenderer: { sections: items } },
+    }),
+  ]) {
+    const r = runtime();
+    assert.deepEqual(
+      r.parse(wrap([tile, { adSlotRenderer: {} }, tile])),
+      wrap([tile, tile]),
+    );
+    r.control.dispose();
+  }
+});
+
+test('unchanged feed retains list identity and out of scope data stays untouched', () => {
+  const r = runtime();
+  const input = home([
+    shelf([{ tileRenderer: {} }, { feedNudgeRenderer: {} }]),
+  ]);
+  r.realm.text = JSON.stringify(input);
+  assert.equal(
+    r.run(
+      `globalThis.list = undefined; JSON.parse(text, (key, value) => { if(key === 'items') list = value; if(key === '') return value; return value; }).contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents[0].shelfRenderer.content.horizontalListRenderer.items === list`,
+    ),
+    true,
+  );
+  for (const value of [
+    input,
+    { contents: [{ adSlotRenderer: {} }] },
+    { other: { items: [{ adSlotRenderer: {} }] } },
     {
-      entries: [true, false, null, 1, 'true'].map((isAd) => ({
-        command: { reelWatchEndpoint: { adClientParams: { isAd } } },
-      })),
+      entries: [
+        { command: { reelWatchEndpoint: { adClientParams: { isAd: true } } } },
+      ],
     },
   ])
-    assert.deepEqual(r.parse(input), input);
+    assert.deepEqual(r.parse(value), value);
   assert.equal(
     r.control.drain().some((report) => report.reloadReason || report.error),
     false,
   );
   r.control.dispose();
+});
+
+test('feed validation precedes all player and feed writes; partial write errors retain reload', () => {
+  const r = runtime();
+  const input = {
+    ...player(ads()),
+    ...home([{ adSlotRenderer: {} }, shelf([{ adSlotRenderer: null }])]),
+  };
+  assert.deepEqual(r.parse(input), input);
+  const report = r.control.drain().at(-1);
+  assert.match(report.error, /incompatible feed field.*items.*adSlotRenderer/);
+  assert.equal(report.reloadReason, null);
+  assert.equal(r.run('JSON.parse === originalParse'), true);
+  const partial = runtime();
+  partial.realm.text = JSON.stringify(
+    home([{ adSlotRenderer: {} }, shelf([{ adSlotRenderer: {} }])]),
+  );
+  assert.throws(
+    () =>
+      partial.run(
+        `JSON.parse(text, (key,value) => key === 'sectionListRenderer' ? Object.freeze(value) : value)`,
+      ),
+    /cannot filter feed/,
+  );
+  assert.ok(partial.control.drain().at(-1).reloadReason);
+  partial.control.dispose();
 });
 
 test('all fields are validated before mutation; incompatible data reports and detaches', () => {

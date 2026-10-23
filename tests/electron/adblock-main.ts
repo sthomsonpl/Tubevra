@@ -4,7 +4,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createTVWindow } from '../../src/main/tv-window';
 import { UserAgentStore } from '../../src/main/user-agent-store';
-import path from 'node:path';
 
 if (!process.env.TUBEVRA_TEST_PROFILE || !process.env.TUBEVRA_TEST_RESULT)
   throw Error('Use the isolated packaged hook runner.');
@@ -24,7 +23,14 @@ app
   .whenReady()
   .then(async () => {
     assert.equal(app.isPackaged, process.env.TUBEVRA_TEST_PACKAGED === '1');
-    const first = `window.payload = '{"playabilityStatus":{},"streamingData":{},"adPlacements":[{"adPlacementRenderer":{}}],"adSlots":[{"adSlotRenderer":{}}],"captions":{"kept":true}}'; window.retained = JSON.parse; window.firstResult = JSON.parse(payload);`;
+    const feed = JSON.stringify({
+      contents: {
+        sectionListRenderer: {
+          contents: [{ adSlotRenderer: {} }, { feedNudgeRenderer: {} }],
+        },
+      },
+    });
+    const first = `window.payload = '{"playabilityStatus":{},"streamingData":{},"adPlacements":[{"adPlacementRenderer":{}}],"adSlots":[{"adSlotRenderer":{}}],"captions":{"kept":true}}'; window.retained = JSON.parse; window.firstResult = JSON.parse(payload); window.firstFeed = JSON.parse(${JSON.stringify(feed)});`;
     const hash = createHash('sha256').update(first).digest('base64');
     let requests = 0;
     const failures: string[] = [];
@@ -47,14 +53,7 @@ app
           },
         );
       });
-    if (app.isPackaged)
-      await createTVWindow(await UserAgentStore.open(app.getPath('userData')));
-    else
-      require(
-        path.resolve(
-          'out/Tubevra-win32-x64/resources/app.asar/.vite/build/main.cjs',
-        ),
-      );
+    await createTVWindow(await UserAgentStore.open(app.getPath('userData')));
     await waitFor(async () =>
       webContents
         .getAllWebContents()
@@ -85,6 +84,12 @@ app
       0,
     );
     assert.equal(await tv.executeJavaScript('firstResult.captions.kept'), true);
+    assert.deepEqual(
+      await tv.executeJavaScript(
+        'firstFeed.contents.sectionListRenderer.contents',
+      ),
+      [{ feedNudgeRenderer: {} }],
+    );
     await tv.executeJavaScript('location.hash = "#/watch"');
     assert.equal(await parse(), 0);
     await waitFor(async () => (await state()).items[0].reloadRequired);
@@ -177,7 +182,7 @@ app
       JSON.stringify({
         passed: true,
         checks: [
-          'production Adblock and serialized player helper',
+          'production Adblock and serialized player/feed helpers',
           'first script',
           'CSP',
           'isolation',

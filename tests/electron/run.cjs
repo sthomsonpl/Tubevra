@@ -31,6 +31,8 @@ if (
 const env = { ...process.env, TUBEVRA_TEST_PROFILE: profile };
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.NODE_TLS_REJECT_UNAUTHORIZED;
+const adblockResult = path.resolve('out/verification/adblock/result.json');
+if (task === 'adblock-smoke') fs.rmSync(adblockResult, { force: true });
 try {
   const result = spawnSync(
     require('electron'),
@@ -39,6 +41,13 @@ try {
   );
   if (result.error) console.error(result.error.message);
   process.exitCode = result.status ?? 1;
+  if (task === 'adblock-smoke') {
+    if (!fs.existsSync(adblockResult))
+      throw new Error('Adblock Electron test did not produce a result.');
+    const report = JSON.parse(fs.readFileSync(adblockResult, 'utf8'));
+    if (report.passed !== true)
+      throw new Error('Adblock Electron test failed: ' + report.error);
+  }
 } finally {
   fs.rmSync(resolved, {
     recursive: true,
