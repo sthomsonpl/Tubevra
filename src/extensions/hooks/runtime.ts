@@ -4,11 +4,11 @@ import type {
   PageConfiguration,
 } from '../types';
 
-// Serialized into the page world: keep every executable dependency in this body.
-export function hookEntry(initial: PageConfiguration) {
-  const starts: Readonly<Record<string, HookExtensionStart>> = {
-    /* bundled hooks */
-  };
+// Shared lifecycle. The build encloses this runtime and module dependencies in hookEntry.
+export function createHookRuntime(
+  initial: PageConfiguration,
+  starts: Readonly<Record<string, HookExtensionStart>>,
+) {
   // Validate disabled implementations too, before acquiring any resources.
   const ids = Object.keys(starts);
   if (

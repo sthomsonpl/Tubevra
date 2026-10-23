@@ -1,10 +1,11 @@
 import { ipcRenderer } from 'electron';
+import { starts as pageStarts } from './implementations';
 import { PageRuntime } from './runtime';
 import { PAGE_IPC } from './channels';
 import { startHookRuntime } from '../hooks/bootstrap';
 import type { PageConfiguration, PageExtensionStart } from '../types';
 export function startPageRuntime(
-  starts: Readonly<Record<string, PageExtensionStart>> = {},
+  starts: Readonly<Record<string, PageExtensionStart>> = pageStarts,
 ) {
   if (
     process.isMainFrame &&

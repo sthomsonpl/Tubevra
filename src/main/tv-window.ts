@@ -5,9 +5,10 @@ import {
   session,
   WebContentsView,
 } from 'electron';
+import { starts as mainStarts } from '../extensions/main/implementations';
 import { TubervaExtensions } from '../extensions/tuberva-extensions';
 import { connectPage } from '../extensions/main/page-bridge';
-import { extensionRegistry } from '../extensions/registry';
+import { extensionRegistry, hookManifest } from '../extensions/registry';
 import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -58,8 +59,9 @@ export async function createTVWindow(store: UserAgentStore) {
       app.getPath('userData'),
       extensionRegistry,
       tvSession.webRequest,
-      {},
+      mainStarts,
       () => notifyExtensions(),
+      hookManifest,
     );
   } catch (cause) {
     mainWindow.destroy();

@@ -1,5 +1,7 @@
 // Test-only copy: never modify the production archive or register fixture hooks there.
 import { build } from 'vite';
+import { extensionBuildPlugin } from '../build/extensions.mjs';
+import { fixtureCatalog } from './fixtures/extensions/catalog.mjs';
 import { createHash } from 'node:crypto';
 import { NtExecutable, NtExecutableResource } from 'resedit';
 import { extractAll, createPackage, getRawHeader } from '@electron/asar';
@@ -21,44 +23,19 @@ if (
 try {
   const appDir = path.join(root, 'app');
   const source = path.join(root, 'source');
-  await cp('out/Tubevra-win32-x64', appDir, { recursive: true });
+  await cp(
+    process.env.TUBEVRA_TEST_PACKAGE ?? 'out/Tubevra-win32-x64',
+    appDir,
+    { recursive: true },
+  );
   extractAll(path.join(appDir, 'resources/app.asar'), source);
-  const fixture = {
-    name: 'packaged-hook-fixture',
-    enforce: 'pre',
-    transform(code, id) {
-      const file = id.replaceAll('\\', '/');
-      if (file.endsWith('/src/extensions/registry.ts'))
-        return code.replace(
-          '[],',
-          "[{ id: 'sample', name: 'Packaged hook', description: 'Test only', modes: ['tv'], defaultEnabled: true, main: false, page: false, hooks: true }],",
-        );
-      if (file.endsWith('/src/main/tv-window.ts'))
-        return code.replace(
-          '() => notifyExtensions(),',
-          "() => notifyExtensions(), ['sample'],",
-        );
-      if (file.endsWith('/src/extensions/hooks/runtime.ts'))
-        return code.replace(
-          '/* bundled hooks */',
-          `sample: (context) => {
-          const target = window as unknown as { fixtureCall?: (n: number) => number };
-          target.fixtureCall = (n: number) => n + 7;
-          const fail = () => { context.requireReload('Fixture effects need reload.'); context.reportError('Fixture hook failed.'); };
-          window.addEventListener('fixture-fail', fail);
-          context.onCleanup(() => { window.removeEventListener('fixture-fail', fail); return undefined; });
-          return () => { delete target.fixtureCall; return undefined; };
-        }`,
-        );
-    },
-  };
   for (const [entry, filename] of [
     ['tests/electron/packaged-hooks-main.ts', 'main.cjs'],
     ['src/preload/tv-preload.ts', 'tv-preload.cjs'],
   ]) {
     await build({
       configFile: false,
-      plugins: [fixture],
+      plugins: [extensionBuildPlugin(fixtureCatalog)],
       define: {
         MAIN_WINDOW_VITE_DEV_SERVER_URL: 'undefined',
         MAIN_WINDOW_VITE_NAME: '"main_window"',

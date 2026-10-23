@@ -1,4 +1,6 @@
 import { build } from 'vite';
+import { extensionBuildPlugin } from '../build/extensions.mjs';
+import { fixtureCatalog } from './fixtures/extensions/catalog.mjs';
 await build({
   configFile: false,
   build: {
@@ -14,26 +16,7 @@ await build({
 
 await build({
   configFile: false,
-  plugins: [
-    {
-      name: 'fixture-hooks',
-      enforce: 'pre',
-      transform(code, id) {
-        if (
-          !id.replaceAll('\\', '/').endsWith('/src/extensions/hooks/runtime.ts')
-        )
-          return;
-        return code.replace(
-          '/* bundled hooks */',
-          `sample: () => {
-      const target = window as unknown as { fixtureCall?: (n: number) => number };
-      target.fixtureCall = (n: number) => n + 7;
-      return () => { delete target.fixtureCall; return undefined; };
-    }`,
-        );
-      },
-    },
-  ],
+  plugins: [extensionBuildPlugin(fixtureCatalog)],
   build: {
     outDir: 'out/verification/hooks-bootstrap',
     lib: {

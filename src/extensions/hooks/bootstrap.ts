@@ -1,6 +1,6 @@
 import { ipcRenderer } from 'electron';
 import { executeHookEntry } from './adapter';
-import { hookEntry } from './runtime';
+import { hookEntry } from './entry';
 import { PAGE_IPC } from '../page/channels';
 import type { PageConfiguration } from '../types';
 

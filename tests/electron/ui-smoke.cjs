@@ -71,7 +71,13 @@ app
         });
       });
     // Use the immutable package, since an existing dev watcher may rebuild .vite.
-    require('../../out/Tubevra-win32-x64/resources/app.asar/.vite/build/main.cjs');
+    require(
+      path.join(
+        process.env.TUBEVRA_TEST_PACKAGE ??
+          path.resolve('out/Tubevra-win32-x64'),
+        'resources/app.asar/.vite/build/main.cjs',
+      ),
+    );
     const win = await waitFor(
       () => BrowserWindow.getAllWindows()[0],
       'main window',

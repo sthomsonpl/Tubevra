@@ -24,6 +24,11 @@ app.setPath('userData', process.env.TUBEVRA_TEST_PROFILE);
 app
   .whenReady()
   .then(async () => {
+    const { fixtureCatalog } =
+      await import('../fixtures/extensions/catalog.mjs');
+    const {
+      createExtensionRegistry,
+    } = require('../../src/extensions/module.ts');
     let bridge;
     const reports = [];
     const first =
@@ -48,22 +53,13 @@ app
     );
     const engine = await TubervaExtensions.open(
       process.env.TUBEVRA_TEST_PROFILE,
-      [
-        {
-          id: 'sample',
-          name: 'Fixture',
-          description: 'Test only',
-          modes: ['tv'],
-          main: false,
-          page: false,
-          hooks: true,
-          defaultEnabled: true,
-        },
-      ],
+      createExtensionRegistry(fixtureCatalog),
       ses.webRequest,
       {},
       () => bridge?.publish(),
-      ['sample'],
+      fixtureCatalog
+        .filter((item) => item.modules.hooks)
+        .map((item) => item.id),
     );
     const reportHook = engine.reportHook.bind(engine);
     engine.reportHook = (value) => {

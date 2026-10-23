@@ -1,6 +1,8 @@
 import { build } from 'vite';
+import { extensionBuildPlugin } from '../build/extensions.mjs';
 await build({
   configFile: false,
+  plugins: [extensionBuildPlugin()],
   build: {
     outDir: 'out/verification/runtime',
     lib: {

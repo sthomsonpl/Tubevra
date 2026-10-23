@@ -3,11 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const ts = require('typescript');
 function runtime(start) {
-  const code = fs
-    .readFileSync('src/extensions/hooks/runtime.ts', 'utf8')
-    .replace('/* bundled hooks */', 'sample: globalThis.fixtureStart');
+  const code = fs.readFileSync('src/extensions/hooks/runtime.ts', 'utf8');
   const module = { exports: {} };
-  globalThis.fixtureStart = start;
   new Function(
     'exports',
     ts.transpileModule(code, {
@@ -17,7 +14,8 @@ function runtime(start) {
       },
     }).outputText,
   )(module.exports);
-  return module.exports.hookEntry;
+  return (initial) =>
+    module.exports.createHookRuntime(initial, { sample: start });
 }
 const config = (revision, enabled = true, document = 'doc') => ({
   document,
@@ -51,7 +49,6 @@ test('hooks install once, reject stale configurations, defer re-enable and clean
   const next = entry(config(4));
   assert.equal(starts, 2);
   next.dispose();
-  delete globalThis.fixtureStart;
 });
 test('disabled bootstrap defers activation; invalid async installation cleans partial resources', () => {
   let cleanups = 0;
@@ -67,7 +64,6 @@ test('disabled bootstrap defers activation; invalid async installation cleans pa
   const failed = entry(config(0));
   assert.equal(cleanups, 1);
   assert.equal(failed.drain().at(-1).status, 'error');
-  delete globalThis.fixtureStart;
 });
 
 test('bootstrap reconciles committed updates while the ready handshake is pending', async (t) => {
@@ -115,7 +111,7 @@ test('bootstrap reconciles committed updates while the ready handshake is pendin
           exports,
           require: (id) => {
             if (id === 'electron') return { ipcRenderer: ipc };
-            if (file.endsWith('hooks/bootstrap.ts') && id === './runtime')
+            if (file.endsWith('hooks/bootstrap.ts') && id === './entry')
               return { hookEntry: entry };
             if (id === './adapter')
               return { executeHookEntry: (fn, args) => fn(...args) };
@@ -162,7 +158,6 @@ test('bootstrap reconciles committed updates while the ready handshake is pendin
       assert.equal(reports.at(-1).revision, readyRevision === 3 ? 3 : 2);
       for (const callback of listeners.get('pagehide')) callback();
       assert.equal(ipc.listenerCount('tubevra:page:state'), 0);
-      delete globalThis.fixtureStart;
     });
   }
 });
