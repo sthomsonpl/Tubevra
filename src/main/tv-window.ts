@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   ipcMain,
+  screen,
   session,
   WebContentsView,
 } from 'electron';
@@ -15,6 +16,8 @@ import { pathToFileURL } from 'node:url';
 import { IPC } from '../shared/api';
 import type { AppState, Result } from '../shared/api';
 import type { UserAgentStore } from './user-agent-store';
+import { selectTVDisplay } from './tv-display';
+import { connectTVDisplay } from './tv-display-bridge';
 
 const TV_HOME = 'https://www.youtube.com/tv';
 
@@ -31,6 +34,10 @@ function isTVURL(value: string) {
 }
 
 export async function createTVWindow(store: UserAgentStore) {
+  const display = selectTVDisplay(
+    screen.getAllDisplays(),
+    screen.getPrimaryDisplay().id,
+  );
   const shellURL = MAIN_WINDOW_VITE_DEV_SERVER_URL
     ? new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).href
     : pathToFileURL(
@@ -168,6 +175,12 @@ export async function createTVWindow(store: UserAgentStore) {
     syncVisibility();
     publish();
   };
+  const displayBridge = connectTVDisplay(
+    ipcMain,
+    contents,
+    display,
+    reportError,
+  );
 
   function assertShell(event: IpcMainInvokeEvent) {
     const sender = event.sender;
@@ -419,6 +432,7 @@ export async function createTVWindow(store: UserAgentStore) {
   mainWindow.webContents.session.setPermissionCheckHandler(() => false);
 
   mainWindow.on('closed', () => {
+    displayBridge.dispose();
     pageBridge.dispose();
     void extensions
       .dispose()

@@ -16,6 +16,7 @@
     "lint:fix": "oxlint --fix && oxfmt --write",
     "typecheck": "tsc --noEmit",
     "test:core": "node --test tests/core.test.cjs",
+    "test:tv-display": "node --test tests/tv-display.test.cjs",
     "test:adblock": "node --test tests/adblock.test.cjs",
     "test:ui": "node tests/electron/run.cjs ui-smoke",
     "test:glass": "node tests/electron/run.cjs glass-probe",
