@@ -18,6 +18,8 @@ import type { AppState, Result } from '../shared/api';
 import type { UserAgentStore } from './user-agent-store';
 import { selectTVDisplay } from './tv-display';
 import { connectTVDisplay } from './tv-display-bridge';
+import { connectToolbarAutoHide } from './toolbar-auto-hide';
+import { TOOLBAR_STYLE } from './toolbar-style';
 
 const TV_HOME = 'https://www.youtube.com/tv';
 
@@ -106,6 +108,7 @@ export async function createTVWindow(store: UserAgentStore) {
   const toolbar = new WebContentsView({
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
+      backgroundThrottling: false,
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
@@ -113,19 +116,23 @@ export async function createTVWindow(store: UserAgentStore) {
       webviewTag: false,
     },
   });
-  toolbar.setBackgroundColor('#6612161d');
-  toolbar.setBorderRadius(26);
-  toolbar.setBackgroundBlur(18);
+  toolbar.setBackgroundColor(TOOLBAR_STYLE.backgroundColor);
+  toolbar.setBorderRadius(TOOLBAR_STYLE.borderRadius);
+  toolbar.setBackgroundBlur(TOOLBAR_STYLE.backgroundBlur);
   mainWindow.contentView.addChildView(toolbar);
+  const dock = connectToolbarAutoHide(
+    mainWindow,
+    toolbar,
+    () => {
+      if (settingsOpen || error || loading) mainWindow.webContents.focus();
+      else contents.focus();
+    },
+    (message) => reportError(message),
+  );
   const resize = () => {
     const { width, height } = mainWindow.contentView.getBounds();
     youtube.setBounds({ x: 0, y: 0, width, height });
-    toolbar.setBounds({
-      x: Math.round((width - 300) / 2),
-      y: height - 88,
-      width: 300,
-      height: 68,
-    });
+    dock.layout();
   };
   resize();
   // The root view also changes when the native menu is first laid out. Window
@@ -156,7 +163,10 @@ export async function createTVWindow(store: UserAgentStore) {
     // Extension errors are separate from YouTube load errors.
     if (mainWindow.isDestroyed()) return;
     youtube.setVisible(!settingsOpen && !error && !loading);
-    toolbar.setVisible(!playbackFullscreen);
+    dock.setState({
+      pinned: settingsOpen || !!error || loading,
+      suppressed: playbackFullscreen,
+    });
   };
   const pageBridge = connectPage(ipcMain, contents, extensions);
   notifyExtensions = () => {
@@ -432,6 +442,7 @@ export async function createTVWindow(store: UserAgentStore) {
   mainWindow.webContents.session.setPermissionCheckHandler(() => false);
 
   mainWindow.on('closed', () => {
+    dock.dispose();
     displayBridge.dispose();
     pageBridge.dispose();
     void extensions

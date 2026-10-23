@@ -7,6 +7,8 @@ const {
   session,
   desktopCapturer,
   ipcMain,
+  screen,
+  nativeImage,
 } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -71,6 +73,8 @@ async function capture(win, name) {
 app
   .whenReady()
   .then(async () => {
+    let cursor = { x: -100000, y: -100000 };
+    screen.getCursorScreenPoint = () => cursor;
     await session
       .fromPartition('persist:tubevra-tv')
       .protocol.handle('https', (request) => {
@@ -337,6 +341,165 @@ app
       'Extensions test engine: toggles, runtime status, failure, disable and explicit reload',
     );
     await shell.executeJavaScript('window.tubevra.setSettingsOpen(false)');
+    const dockView = win.contentView.children.find(
+      (view) => view.webContents === toolbar,
+    );
+    const dockGroup = win.contentView.children.find(
+      (view) => view.constructor.name === 'View',
+    );
+    assert.ok(dockGroup);
+    assert.equal(dockGroup.children[0].constructor.name, 'ImageView');
+    const moveCursor = (x, y) => {
+      const content = win.getContentBounds();
+      cursor = { x: content.x + x, y: content.y + y };
+    };
+    const dockHidden = () => !dockView.getVisible() && !dockGroup.getVisible();
+    const dockShown = () => dockView.getVisible() && !dockGroup.getVisible();
+    let area = win.contentView.getBounds();
+    win.focus();
+    moveCursor(5, area.height - 48);
+    await waitFor(dockShown, 'full-width bottom strip reveals dock');
+
+    // Record the composed window, not capturePage: the regression involved the
+    // native glass and embedded page appearing in different screen positions.
+    const sources = await desktopCapturer.getSources({
+      types: ['window'],
+      thumbnailSize: { width: 0, height: 0 },
+    });
+    const source = sources.find((entry) => entry.id === win.getMediaSourceId());
+    assert.ok(source);
+    shell.setBackgroundThrottling(false);
+    shell.session.setPermissionRequestHandler(
+      (_contents, permission, callback) =>
+        callback(permission === 'display-capture' || permission === 'media'),
+    );
+    shell.session.setPermissionCheckHandler(
+      (_contents, permission) =>
+        permission === 'display-capture' || permission === 'media',
+    );
+    shell.session.setDisplayMediaRequestHandler((_request, callback) =>
+      callback({ video: source }),
+    );
+    await shell.executeJavaScript(
+      `(async () => {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 60 }, audio: false });
+      const video = document.createElement('video'); video.muted = true; video.srcObject = stream; await video.play();
+      const canvas = document.createElement('canvas'); canvas.width = 420; canvas.height = 130;
+      const context = canvas.getContext('2d');
+      window.dockVideo = { stream, capture() {
+        context.drawImage(video, (video.videoWidth - 420) / 2, video.videoHeight - 130, 420, 130, 0, 0, 420, 130);
+        return canvas.toDataURL('image/png').split(',')[1];
+      }};
+    })()`,
+      true,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const reference = await shell.executeJavaScript(
+      'window.dockVideo.capture()',
+    );
+    moveCursor(5, 5);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    assert.ok(dockShown(), 'dock remains visible for more than a second');
+    await waitFor(dockHidden, 'original dock slides fully out');
+    const hidden = await shell.executeJavaScript('window.dockVideo.capture()');
+    const reveal = setTimeout(() => moveCursor(5, area.height - 48), 300);
+    const frames = await shell.executeJavaScript(`new Promise(resolve => {
+      const frames = []; const start = performance.now();
+      const timer = setInterval(() => {
+        frames.push({ ms: performance.now() - start, png: window.dockVideo.capture() });
+        if (performance.now() - start >= 1100) { clearInterval(timer); resolve(frames); }
+      }, 16);
+    })`);
+    clearTimeout(reveal);
+    await waitFor(dockShown, 'original buttons take over after animation');
+    await shell.executeJavaScript(
+      'window.dockVideo.stream.getTracks().forEach(track => track.stop()); delete window.dockVideo;',
+    );
+    shell.session.setDisplayMediaRequestHandler(null);
+    shell.session.setPermissionRequestHandler(
+      (_contents, _permission, callback) => callback(false),
+    );
+    shell.session.setPermissionCheckHandler(() => false);
+    const decode = (png) =>
+      nativeImage.createFromBuffer(Buffer.from(png, 'base64')).toBitmap();
+    const backdrop = decode(hidden);
+    const baseline = decode(reference);
+    const motion = frames.map((frame, index) => {
+      const pixels = decode(frame.png);
+      let panelTop = 130;
+      let iconTop = 130;
+      let whites = 0;
+      for (let y = 0; y < 130; y++) {
+        let changed = 0;
+        for (let x = 100; x < 320; x++) {
+          const k = (y * 420 + x) * 4;
+          if (
+            Math.abs(pixels[k] - backdrop[k]) +
+              Math.abs(pixels[k + 1] - backdrop[k + 1]) +
+              Math.abs(pixels[k + 2] - backdrop[k + 2]) >
+            24
+          )
+            changed++;
+          if (pixels[k] > 180 && pixels[k + 1] > 180 && pixels[k + 2] > 180) {
+            whites++;
+            iconTop = Math.min(iconTop, y);
+          }
+        }
+        if (changed > 80) panelTop = Math.min(panelTop, y);
+      }
+      fs.writeFileSync(
+        path.join(output, `dock-frame-${index}.png`),
+        Buffer.from(frame.png, 'base64'),
+      );
+      if (panelTop < 88) {
+        assert.ok(
+          whites > 25,
+          `icons must be present while the panel is visible at ${frame.ms}ms`,
+        );
+        assert.ok(
+          iconTop - panelTop >= 10 && iconTop - panelTop <= 23,
+          'icons and original glass travel together',
+        );
+      }
+      return { ms: frame.ms, panelTop, iconTop, whites };
+    });
+    const visibleFrames = motion.filter((frame) => frame.panelTop < 110);
+    assert.ok(
+      visibleFrames.some(
+        (frame) => frame.panelTop > visibleFrames.at(-1).panelTop + 10,
+      ),
+      'recorded intermediate positions',
+    );
+    for (let i = 1; i < visibleFrames.length; i++)
+      assert.ok(
+        visibleFrames[i].panelTop <= visibleFrames[i - 1].panelTop + 2,
+        'no backwards jump at handoff',
+      );
+    const finalPixels = decode(frames.at(-1).png);
+    let difference = 0;
+    for (let i = 0; i < finalPixels.length; i += 4)
+      for (let c = 0; c < 3; c++)
+        difference += Math.abs(finalPixels[i + c] - baseline[i + c]);
+    assert.ok(
+      difference / (420 * 130 * 3) < 1,
+      'original style is preserved after handoff',
+    );
+    fs.writeFileSync(
+      path.join(output, 'dock-motion.json'),
+      JSON.stringify(motion, null, 2),
+    );
+    checks.push(
+      'composed-window pixels: original style, unified glass/icons, intermediate frames, no handoff jump and longer hide delay',
+    );
+    moveCursor(5, 5);
+    await waitFor(dockHidden, 'dock hides before reversal test');
+    moveCursor(area.width / 2, area.height - 2);
+    await waitFor(() => dockGroup.getVisible(), 'dock slides in');
+    await waitFor(dockShown, 'dock becomes interactive');
+    moveCursor(5, 5);
+    await waitFor(() => dockGroup.getVisible(), 'dock begins sliding out');
+    moveCursor(area.width / 2, area.height - 2);
+    await waitFor(dockShown, 'hide reverses without losing buttons');
     const initialToolbarBounds = win.contentView.children
       .find((view) => view.webContents === toolbar)
       .getBounds();
@@ -612,7 +775,9 @@ app
       async () => !(await state()).playbackFullscreen,
       'fullscreen exit',
     );
-    assert.equal(toolbarView.getVisible(), true);
+    moveCursor(area.width / 2, win.contentView.getBounds().height - 2);
+    win.focus();
+    await waitFor(dockShown, 'dock restores after fullscreen');
     checks.push(
       'bounded native toolbar and automatic hide/restore on actual HTML fullscreen',
     );
