@@ -91,6 +91,94 @@ test('first run, concurrent updates, restart and unknown persisted IDs', async (
   await assert.rejects(reopened.update({ id: 'absent', enabled: false }));
   await assert.rejects(reopened.update({ id: 'sample', enabled: 1 }));
 });
+test('hook bootstrap reads only committed settings during a pending save', async (t) => {
+  for (const fail of [false, true]) {
+    await t.test(fail ? 'failed save' : 'successful save', async (t) => {
+      const { EventEmitter } = require('node:events');
+      const { connectPage } = require('../src/extensions/main/page-bridge.ts');
+      const { PAGE_IPC } = require('../src/extensions/page/channels.ts');
+      const dir = await directory(t);
+      const handlers = new Map();
+      const ipc = {
+        on: (name, fn) => handlers.set(name, fn),
+        handle: (name, fn) => handlers.set(name, fn),
+        removeListener: (name) => handlers.delete(name),
+        removeHandler: (name) => handlers.delete(name),
+      };
+      const published = [];
+      const contents = Object.assign(new EventEmitter(), {
+        mainFrame: { url: 'https://www.youtube.com/tv' },
+        isDestroyed: () => false,
+        send: (_channel, value) => published.push(value),
+      });
+      let bridge;
+      const engine = await TubervaExtensions.open(
+        dir,
+        [{ ...registry[0], main: false, hooks: true }],
+        source(),
+        {},
+        () => bridge?.publish(),
+        ['sample'],
+      );
+      bridge = connectPage(ipc, contents, engine);
+      t.after(async () => {
+        bridge.dispose();
+        await engine.dispose();
+      });
+      const read = () => {
+        const event = { sender: contents, senderFrame: contents.mainFrame };
+        handlers.get(PAGE_IPC.bootstrap)(event);
+        assert.equal(event.returnValue.ok, true);
+        return event.returnValue.value;
+      };
+      const initial = read();
+      let releaseSave, saving;
+      const gate = new Promise((resolve) => {
+        releaseSave = resolve;
+      });
+      const entered = new Promise((resolve) => {
+        saving = resolve;
+      });
+      // Pause the real store at its persistence boundary; do not delay bootstrap.
+      const save = engine.store.save.bind(engine.store);
+      engine.store.save = async (next) => {
+        saving();
+        await gate;
+        if (fail) throw Error('fixture write rejected');
+        await save(next);
+      };
+      const update = engine.update({ id: 'sample', enabled: true });
+      const result = fail
+        ? assert.rejects(update, /fixture write rejected/)
+        : update;
+      await entered;
+      assert.deepEqual(read(), initial);
+      assert.equal(published.length, 0);
+      releaseSave();
+      await result;
+      const committed = read();
+      assert.equal(committed.document, initial.document);
+      assert.equal(committed.hooks[0].enabled, !fail);
+      assert.equal(committed.revision, initial.revision + (fail ? 0 : 1));
+      const handshake = handlers.get(PAGE_IPC.ready)({
+        sender: contents,
+        senderFrame: contents.mainFrame,
+      });
+      assert.deepEqual(handshake, committed);
+      if (fail) assert.equal(published.length, 0);
+      else assert.deepEqual(published.at(-1), committed);
+      assert.equal(
+        (
+          await ExtensionStore.open(dir, [
+            { ...registry[0], main: false, hooks: true },
+          ])
+        ).enabled('sample'),
+        !fail,
+      );
+    });
+  }
+});
+
 test('corrupt, unsupported and invalid files are preserved', async (t) => {
   const dir = await directory(t),
     file = path.join(dir, 'extensions.json');
@@ -295,6 +383,10 @@ test('page reports validate payload and revision and require successful main sta
     await engine.reportPage(report);
   assert.equal(engine.snapshot().items[0].status, 'starting');
   await engine.reportPage({
+    layer: 'page',
+    instance: '1',
+    document: 'doc',
+    reloadReason: null,
     revision,
     id: 'sample',
     status: 'active',
@@ -303,11 +395,156 @@ test('page reports validate payload and revision and require successful main sta
   assert.equal(engine.snapshot().items[0].status, 'active');
   engine.resetPage();
   await engine.reportPage({
+    layer: 'page',
+    instance: '1',
+    document: 'doc',
+    reloadReason: null,
     revision,
     id: 'sample',
     status: 'active',
     error: null,
   });
   assert.equal(engine.snapshot().items[0].status, 'starting');
+  await engine.dispose();
+});
+
+test('hook manifests preserve package separation and reject missing or invalid implementations', async (t) => {
+  const {
+    validateHookManifest,
+    validateHookImplementations,
+    validateHookInstallation,
+  } = require('../src/extensions/hooks/validation.ts');
+  const hooks = [
+    { ...registry[0], main: false, hooks: true, defaultEnabled: true },
+  ];
+  validateHookManifest(hooks, ['sample']);
+  validateHookImplementations(hooks, { sample: () => () => undefined });
+  assert.throws(() => validateHookManifest(hooks, []), /manifest/);
+  assert.throws(
+    () => validateHookManifest(hooks, ['sample', 'sample']),
+    /manifest/,
+  );
+  assert.throws(
+    () => validateHookImplementations(hooks, { sample: 1 }),
+    /implementation/,
+  );
+  assert.throws(
+    () => validateHookInstallation(Promise.resolve(() => undefined)),
+    /synchronously/,
+  );
+  assert.throws(() => validateHookInstallation(undefined), /synchronously/);
+  validateHookInstallation(() => undefined);
+  const dir = await directory(t);
+  await assert.rejects(
+    TubervaExtensions.open(dir, hooks, source(), {}),
+    /manifest/,
+  );
+  const engine = await TubervaExtensions.open(
+    dir,
+    hooks,
+    source(),
+    {},
+    () => {},
+    ['sample'],
+  );
+  t.after(() => engine.dispose());
+  assert.equal(engine.snapshot().items[0].status, 'starting');
+});
+
+test('all seven layer combinations require every confirmation and coordinate hook failure', async (t) => {
+  for (let mask = 1; mask < 8; mask++) {
+    const metadata = {
+      ...registry[0],
+      defaultEnabled: true,
+      main: !!(mask & 1),
+      page: !!(mask & 2),
+      hooks: !!(mask & 4),
+    };
+    let released = 0;
+    const engine = await TubervaExtensions.open(
+      await directory(t),
+      [metadata],
+      source(),
+      {
+        sample: () => () => {
+          released++;
+        },
+      },
+      () => {},
+      metadata.hooks ? ['sample'] : [],
+    );
+    const report = (layer, status = 'active', extra = {}) => ({
+      document: 'doc',
+      revision: engine.snapshot().revision,
+      id: 'sample',
+      instance: '1',
+      layer,
+      status,
+      error: null,
+      reloadReason: null,
+      ...extra,
+    });
+    if (metadata.page || metadata.hooks)
+      assert.equal(engine.snapshot().items[0].status, 'starting');
+    if (metadata.page) await engine.reportPage(report('page'));
+    if (metadata.hooks) {
+      assert.equal(engine.snapshot().items[0].status, 'starting');
+      await engine.reportHook(report('hooks'));
+    }
+    assert.equal(engine.snapshot().items[0].status, 'active');
+    if (metadata.hooks) {
+      await engine.reportHook(
+        report('hooks', 'error', {
+          error: 'callback failed',
+          reloadReason: 'irreversible effect',
+        }),
+      );
+      assert.equal(engine.snapshot().items[0].status, 'error');
+      assert.equal(engine.snapshot().items[0].reloadRequired, true);
+      if (metadata.main) assert.equal(released, 1);
+      await engine.update({ id: 'sample', enabled: false });
+      assert.equal(engine.snapshot().items[0].reloadRequired, true);
+    }
+    await engine.dispose();
+  }
+});
+
+test('coordinator ignores old instances and preserves simultaneous failure and reload', async (t) => {
+  const engine = await TubervaExtensions.open(
+    await directory(t),
+    [{ ...registry[0], main: false, hooks: true, defaultEnabled: true }],
+    source(),
+    {},
+    () => {},
+    ['sample'],
+  );
+  const report = {
+    layer: 'hooks',
+    document: 'doc',
+    instance: 'current',
+    revision: engine.snapshot().revision,
+    id: 'sample',
+    status: 'active',
+    error: null,
+    reloadReason: null,
+  };
+  await engine.reportHook(report);
+  await engine.reportHook({
+    ...report,
+    instance: 'old',
+    status: 'error',
+    error: 'stale',
+  });
+  assert.equal(engine.snapshot().items[0].status, 'active');
+  await engine.reportHook({
+    ...report,
+    status: 'error',
+    error: 'current failure',
+    reloadReason: 'irreversible',
+  });
+  assert.equal(engine.snapshot().items[0].status, 'error');
+  assert.equal(engine.snapshot().items[0].reloadRequired, true);
+  await engine.reportHook(report);
+  assert.equal(engine.snapshot().items[0].status, 'error');
   await engine.dispose();
 });

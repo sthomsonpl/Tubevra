@@ -1,6 +1,7 @@
 import { ipcRenderer } from 'electron';
 import { PageRuntime } from './runtime';
 import { PAGE_IPC } from './channels';
+import { startHookRuntime } from '../hooks/bootstrap';
 import type { PageConfiguration, PageExtensionStart } from '../types';
 export function startPageRuntime(
   starts: Readonly<Record<string, PageExtensionStart>> = {},
@@ -10,6 +11,21 @@ export function startPageRuntime(
     location.origin === 'https://www.youtube.com' &&
     (location.pathname === '/tv' || location.pathname.startsWith('/tv/'))
   ) {
+    const problem = (cause: unknown) => {
+      console.error('Extension runtime failed:', cause);
+      if (bootstrap)
+        ipcRenderer.send(PAGE_IPC.runtimeError, {
+          document: bootstrap.config.document,
+          error: String(cause).slice(0, 2000),
+        });
+    };
+    let bootstrap: ReturnType<typeof startHookRuntime>;
+    try {
+      bootstrap = startHookRuntime();
+    } catch (cause) {
+      problem(cause);
+      return;
+    }
     let runtime: PageRuntime | undefined;
     let closed = false;
     let latest: PageConfiguration | undefined;
@@ -17,6 +33,12 @@ export function startPageRuntime(
       _event: Electron.IpcRendererEvent,
       config: PageConfiguration,
     ) => {
+      if (
+        config.document !== bootstrap.config.document ||
+        !Number.isSafeInteger(config.revision) ||
+        config.revision <= (latest?.revision ?? bootstrap.config.revision)
+      )
+        return;
       latest = config;
       if (!closed && runtime) void runtime.apply(config);
     };
@@ -34,6 +56,11 @@ export function startPageRuntime(
       .invoke(PAGE_IPC.ready)
       .then((config: PageConfiguration) => {
         if (closed) return;
+        if (config.document !== bootstrap.config.document)
+          throw Error('Runtime document changed during bootstrap.');
+        bootstrap.apply(
+          latest && latest.revision > config.revision ? latest : config,
+        );
         runtime = new PageRuntime(
           config.document,
           document,
@@ -50,6 +77,6 @@ export function startPageRuntime(
           latest && latest.revision > config.revision ? latest : config,
         );
       })
-      .catch((cause) => console.error('Extension runtime failed:', cause));
+      .catch(problem);
   }
 }

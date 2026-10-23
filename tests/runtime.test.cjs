@@ -40,10 +40,16 @@ test('runtime deduplicates, preserves reload requirement and cleans resources', 
   await runtime.apply(config(0));
   await runtime.apply(config(1));
   assert.equal(starts, 1);
-  assert.equal(reports.at(-1).status, 'reload-required');
+  assert.equal(
+    reports.at(-1).reloadReason,
+    'Page effects require a new document.',
+  );
   await runtime.apply(config(2, false));
   assert.equal(stops, 2);
-  assert.equal(reports.at(-1).status, 'reload-required');
+  assert.equal(
+    reports.at(-1).reloadReason,
+    'Page effects require a new document.',
+  );
   await runtime.dispose();
 });
 test('runtime ignores stale documents and revisions; partial start cleanup survives errors', async () => {
@@ -110,6 +116,8 @@ test('runtime IPC rejects foreign senders, frames, URLs, documents and invalid a
   const { PAGE_IPC } = require('../src/extensions/page/channels.ts');
   const handlers = new Map();
   const ipc = {
+    on: (name, fn) => handlers.set(name, fn),
+    removeListener: (name) => handlers.delete(name),
     handle: (name, fn) => handlers.set(name, fn),
     removeHandler: (name) => handlers.delete(name),
   };
@@ -134,10 +142,28 @@ test('runtime IPC rejects foreign senders, frames, URLs, documents and invalid a
     ready({ ...event, senderFrame: { url: contents.mainFrame.url } }),
   );
   contents.mainFrame.url = 'https://evil.test/tv';
+  const invalidOrigin = { ...event };
+  handlers.get(PAGE_IPC.bootstrap)(invalidOrigin);
+  assert.equal(invalidOrigin.returnValue.ok, false);
+  const invalidFrame = {
+    ...event,
+    senderFrame: { url: 'https://www.youtube.com/tv' },
+  };
+  handlers.get(PAGE_IPC.bootstrap)(invalidFrame);
+  assert.equal(invalidFrame.returnValue.ok, false);
   assert.throws(() => ready(event));
   contents.mainFrame.url = 'https://www.youtube.com/tv';
   assert.throws(() => ready(event, true));
+  const bootstrap = handlers.get(PAGE_IPC.bootstrap);
+  const rejected = { ...event, sender: {} };
+  bootstrap(rejected);
+  assert.equal(rejected.returnValue.ok, false);
+  bootstrap(event, 'invalid');
+  assert.equal(event.returnValue.ok, false);
+  bootstrap(event);
+  assert.equal(event.returnValue.ok, true);
   const state = ready(event);
+  assert.equal(state.document, event.returnValue.value.document);
   report(event, { document: 'old' });
   report(event, { document: state.document }, true);
   report({ ...event, sender: {} }, { document: state.document });
@@ -155,6 +181,90 @@ test('runtime IPC rejects foreign senders, frames, URLs, documents and invalid a
   assert.equal(reports, 1);
   assert.equal(resets, 1);
   assert.notEqual(ready(event).document, state.document);
+  bridge.dispose();
+  assert.equal(handlers.size, 0);
+});
+
+test('lifecycle deadline releases late resources and observes rejected work', async () => {
+  const { deadline } = require('../src/extensions/lifecycle.ts');
+  let complete,
+    released = 0;
+  const operation = deadline(
+    new Promise((resolve) => {
+      complete = resolve;
+    }),
+    1,
+    (cleanup) => cleanup(),
+  );
+  await assert.rejects(operation, /timed out/);
+  complete(() => {
+    released++;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(released, 1);
+  await assert.rejects(
+    deadline(Promise.reject(Error('original')), 100),
+    /original/,
+  );
+});
+
+test('bridge watchdog reports missing confirmation and bounds diagnostic ingress', (t) => {
+  const { EventEmitter } = require('node:events');
+  const { connectPage } = require('../src/extensions/main/page-bridge.ts');
+  const { PAGE_IPC } = require('../src/extensions/page/channels.ts');
+  let tick,
+    now = 1000,
+    count = 0;
+  t.mock.method(global, 'setInterval', (callback) => {
+    tick = callback;
+    return { unref() {} };
+  });
+  t.mock.method(global, 'clearInterval', () => {});
+  t.mock.method(Date, 'now', () => now);
+  const handlers = new Map();
+  const ipc = {
+    on: (key, fn) => handlers.set(key, fn),
+    handle: (key, fn) => handlers.set(key, fn),
+    removeListener: (key) => handlers.delete(key),
+    removeHandler: (key) => handlers.delete(key),
+  };
+  const contents = Object.assign(new EventEmitter(), {
+    mainFrame: { url: 'https://www.youtube.com/tv' },
+    isDestroyed: () => false,
+    send() {},
+  });
+  const reports = [];
+  const engine = {
+    snapshot: () => ({
+      revision: 1,
+      items: [
+        {
+          id: 'sample',
+          status: 'starting',
+          hooks: true,
+          layers: { hooks: 'starting' },
+        },
+      ],
+    }),
+    reportHook: (report) => {
+      reports.push(report);
+      count++;
+    },
+  };
+  const bridge = connectPage(ipc, contents, engine);
+  const event = { sender: contents, senderFrame: contents.mainFrame };
+  handlers.get(PAGE_IPC.bootstrap)(event);
+  tick();
+  now += 10001;
+  tick();
+  assert.match(reports[0].error, /timed out/);
+  assert.equal(reports[0].document, event.returnValue.value.document);
+  count = 0;
+  for (let n = 0; n < 405; n++)
+    handlers.get(PAGE_IPC.hooksReport)(event, {
+      document: event.returnValue.value.document,
+    });
+  assert.equal(count, 400);
   bridge.dispose();
   assert.equal(handlers.size, 0);
 });

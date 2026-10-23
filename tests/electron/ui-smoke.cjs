@@ -241,6 +241,10 @@ app
       'actual starting state',
     );
     await engine.reportPage({
+      layer: 'page',
+      document: 'ui-fixture',
+      instance: '1',
+      reloadReason: null,
       id: 'sample',
       revision: engine.snapshot().revision,
       status: 'active',
@@ -278,7 +282,11 @@ app
     await engine.reportPage({
       id: 'sample',
       revision: engine.snapshot().revision,
-      status: 'reload-required',
+      layer: 'page',
+      document: 'ui-fixture',
+      instance: '2',
+      reloadReason: 'Page effects require a new document.',
+      status: 'active',
       error: null,
     });
     notify();

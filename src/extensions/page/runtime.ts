@@ -1,3 +1,4 @@
+import { deadline, releaseLate } from '../lifecycle';
 import type {
   Cleanup,
   PageConfiguration,
@@ -8,6 +9,8 @@ import type {
 // All callbacks created by a module must use guard; unhandled page exceptions
 // cannot reliably be attributed to a particular extension.
 export class PageRuntime {
+  private sequence = 0;
+  private identities = new Map<string, string>();
   private revision = -1;
   private pending: Promise<void> = Promise.resolve();
   private closed = false;
@@ -39,21 +42,12 @@ export class PageRuntime {
       for (const item of config.items) {
         if (this.closed || config.revision !== this.revision) return;
         let error: string | null = null;
-        const reloadOnDisable =
-          !item.enabled && this.instances.get(item.id)?.reload;
         if (!item.enabled) error = await this.stop(item.id);
         else {
           if (this.instances.get(item.id)?.abort.signal.aborted)
             await this.stop(item.id);
           if (this.instances.has(item.id)) {
-            this.send(
-              config,
-              item.id,
-              this.instances.get(item.id)!.reload
-                ? 'reload-required'
-                : 'active',
-              null,
-            );
+            this.send(config, item.id, 'active', null);
             continue;
           }
           const instance = {
@@ -61,45 +55,60 @@ export class PageRuntime {
             cleanups: [] as Cleanup[],
             reload: false,
           };
+          this.identities.set(item.id, String(++this.sequence));
           this.instances.set(item.id, instance);
+          let installing = true;
           try {
             const start = this.starts[item.id];
             if (!start)
               throw new Error('Missing page extension implementation.');
-            const cleanup = await start({
-              document: this.document,
-              signal: instance.abort.signal,
-              onCleanup: (cleanup) => instance.cleanups.push(cleanup),
-              guard:
-                (callback) =>
-                (...args) => {
-                  if (instance.abort.signal.aborted) return;
-                  try {
-                    void Promise.resolve(callback(...args)).catch((cause) =>
-                      this.fail(item.id, cause, instance),
-                    );
-                  } catch (cause) {
-                    void this.fail(item.id, cause, instance);
-                  }
+            const cleanup = await deadline(
+              start({
+                document: this.document,
+                signal: instance.abort.signal,
+                onCleanup: (cleanup) => {
+                  if (instance.abort.signal.aborted) releaseLate(cleanup);
+                  else instance.cleanups.push(cleanup);
                 },
-              requireReload: () => {
-                if (instance.abort.signal.aborted) return;
-                instance.reload = true;
-                this.reloadPending.add(item.id);
-                this.send(
-                  { ...config, revision: this.revision },
-                  item.id,
-                  'reload-required',
-                  null,
-                );
-              },
-            });
+                guard:
+                  (callback) =>
+                  (...args) => {
+                    if (instance.abort.signal.aborted) return;
+                    try {
+                      void Promise.resolve(callback(...args)).catch((cause) =>
+                        this.fail(item.id, cause, instance),
+                      );
+                    } catch (cause) {
+                      void this.fail(item.id, cause, instance);
+                    }
+                  },
+                requireReload: () => {
+                  if (instance.abort.signal.aborted) return;
+                  instance.reload = true;
+                  this.reloadPending.add(item.id);
+                  if (!installing)
+                    this.send(
+                      { ...config, revision: this.revision },
+                      item.id,
+                      'active',
+                      null,
+                    );
+                },
+              }),
+              10000,
+              releaseLate,
+            );
+            installing = false;
             if (typeof cleanup !== 'function')
               throw new Error('Extension must return cleanup.');
-            instance.cleanups.push(cleanup);
+            if (this.closed || this.instances.get(item.id) !== instance)
+              releaseLate(cleanup);
+            else instance.cleanups.push(cleanup);
             if (this.closed || instance.abort.signal.aborted)
               await this.stop(item.id);
           } catch (cause) {
+            if (String(cause).includes('timed out'))
+              this.reloadPending.add(item.id);
             error = [String(cause), await this.stop(item.id)]
               .filter(Boolean)
               .join('\n');
@@ -108,13 +117,7 @@ export class PageRuntime {
         this.send(
           config,
           item.id,
-          error
-            ? 'error'
-            : reloadOnDisable || this.reloadPending.has(item.id)
-              ? 'reload-required'
-              : item.enabled
-                ? 'active'
-                : 'disabled',
+          error ? 'error' : item.enabled ? 'active' : 'disabled',
           error,
         );
       }
@@ -129,11 +132,16 @@ export class PageRuntime {
   ) {
     if (!this.closed && config.revision === this.revision)
       this.report({
+        layer: 'page',
+        instance: this.identities.get(id) ?? '',
+        reloadReason: this.reloadPending.has(id)
+          ? 'Page effects require a new document.'
+          : null,
         document: this.documentId,
         revision: this.revision,
         id,
         status,
-        error,
+        error: error?.slice(0, 2000) ?? null,
       });
   }
   private async fail(
@@ -145,17 +153,22 @@ export class PageRuntime {
     this.instances.get(id)?.abort.abort();
     const revision = this.revision;
     await this.pending;
-    if (this.instances.get(id) && this.instances.get(id) !== instance) return;
+    if (this.instances.get(id) !== instance) return;
     const error = [String(cause), await this.stop(id)]
       .filter(Boolean)
       .join('\n');
     if (!this.closed && revision === this.revision)
       this.report({
+        layer: 'page',
+        instance: this.identities.get(id) ?? '',
+        reloadReason: this.reloadPending.has(id)
+          ? 'Page effects require a new document.'
+          : null,
         document: this.documentId,
         revision,
         id,
         status: 'error',
-        error,
+        error: error.slice(0, 2000),
       });
   }
   private async stop(id: string) {
@@ -166,19 +179,30 @@ export class PageRuntime {
     const errors: string[] = [];
     for (const cleanup of instance.cleanups.reverse()) {
       try {
-        await cleanup();
+        await deadline(cleanup(), 1000);
       } catch (cause) {
         errors.push(String(cause));
+        this.reloadPending.add(id);
       }
     }
     return errors.length ? errors.join('\n') : null;
   }
   dispose() {
     this.closed = true;
-    for (const instance of this.instances.values()) instance.abort.abort();
-    this.pending = this.pending.then(async () => {
-      for (const id of this.instances.keys()) await this.stop(id);
-    });
-    return this.pending;
+    for (const instance of this.instances.values()) {
+      instance.abort.abort();
+      for (const cleanup of instance.cleanups.reverse()) {
+        try {
+          void Promise.resolve(cleanup()).catch((cause) =>
+            console.error('Page shutdown cleanup failed:', cause),
+          );
+        } catch (cause) {
+          console.error('Page shutdown cleanup failed:', cause);
+        }
+      }
+      instance.cleanups.length = 0;
+    }
+    this.instances.clear();
+    return Promise.resolve();
   }
 }

@@ -183,13 +183,49 @@ export async function createTVWindow(store: UserAgentStore) {
     }
   }
 
-  const loadTV = async (url: string) => {
+  const loadTV = async (url: string, reload = false) => {
     error = null;
     loading = true;
     syncVisibility();
     publish();
     try {
-      await contents.loadURL(url, { userAgent: store.activeUserAgent() });
+      if (reload) {
+        // loadURL can perform only a same-document navigation for a hash route.
+        // Hooks need a new document; reload retains the current URL, UA and session.
+        await new Promise<void>((resolve, reject) => {
+          const clear = () => {
+            contents.removeListener('did-finish-load', finished);
+            contents.removeListener('did-fail-load', failed);
+            contents.removeListener('destroyed', destroyed);
+          };
+          const finished = () => {
+            clear();
+            resolve();
+          };
+          const destroyed = () => {
+            clear();
+            reject(new Error('YouTube view closed during reload.'));
+          };
+          const failed = (
+            _event: Electron.Event,
+            _code: number,
+            description: string,
+            _url: string,
+            mainFrame: boolean,
+          ) => {
+            if (mainFrame) {
+              clear();
+              reject(new Error(description));
+            }
+          };
+          contents.once('did-finish-load', finished);
+          contents.on('did-fail-load', failed);
+          contents.once('destroyed', destroyed);
+          contents.reload();
+        });
+      } else {
+        await contents.loadURL(url, { userAgent: store.activeUserAgent() });
+      }
       if (error) throw new Error(error);
       if (mainWindow.isDestroyed()) return;
       loading = false;
@@ -259,7 +295,8 @@ export async function createTVWindow(store: UserAgentStore) {
   });
   handle(IPC.reloadTV, async (...args) => {
     if (args.length) throw new Error('Unexpected arguments.');
-    await loadTV(isTVURL(contents.getURL()) ? contents.getURL() : TV_HOME);
+    const url = contents.getURL();
+    await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
   });
   ipcMain.handle(IPC.setSettingsOpen, (event, ...args): Result<AppState> => {
     assertShell(event);

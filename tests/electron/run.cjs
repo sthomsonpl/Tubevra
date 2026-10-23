@@ -4,7 +4,16 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const task = process.argv[2];
-if (!['ui-smoke', 'glass-probe', 'live-smoke', 'runtime-smoke'].includes(task))
+if (
+  ![
+    'ui-smoke',
+    'glass-probe',
+    'live-smoke',
+    'runtime-smoke',
+    'hooks-smoke',
+    'hooks-bootstrap-smoke',
+  ].includes(task)
+)
   throw new Error('Choose a Tubevra Electron test.');
 const profile = fs.mkdtempSync(
   path.join(os.tmpdir(), 'tubevra-electron-test-'),

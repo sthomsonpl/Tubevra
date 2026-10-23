@@ -19,8 +19,10 @@
     "test:ui": "node tests/electron/run.cjs ui-smoke",
     "test:glass": "node tests/electron/run.cjs glass-probe",
     "test:extensions": "node --test tests/extensions.test.cjs",
-    "test:runtime": "node --test tests/runtime.test.cjs",
-    "test:runtime:electron": "node tests/build-runtime.mjs && node tests/electron/run.cjs runtime-smoke"
+    "test:runtime": "node --test tests/runtime.test.cjs tests/hooks.test.cjs",
+    "test:hooks:electron": "node tests/build-hooks.mjs && node tests/electron/run.cjs hooks-smoke && node tests/electron/run.cjs hooks-bootstrap-smoke",
+    "test:runtime:electron": "node tests/build-runtime.mjs && node tests/electron/run.cjs runtime-smoke",
+    "test:hooks:packaged": "node tests/packaged-hooks.mjs"
   },
   "devDependencies": {
     "@electron-forge/cli": "^8.0.1",

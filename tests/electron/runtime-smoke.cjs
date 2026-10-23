@@ -97,11 +97,22 @@ app
       userAgent: 'Tubevra runtime test UA',
     });
     await wait(() => engine.snapshot().items[0].status === 'active');
+    let confirmStopped;
+    const stopped = new Promise((resolve) => {
+      confirmStopped = resolve;
+    });
+    const originalReport = engine.reportPage.bind(engine);
+    engine.reportPage = async (report) => {
+      const result = await originalReport(report);
+      if (report.status === 'disabled') confirmStopped();
+      return result;
+    };
     await win.webContents.executeJavaScript(
       "document.dispatchEvent(new Event('fixture-error'))",
     );
     await wait(() => engine.snapshot().items[0].status === 'error');
     assert.equal(mainResources, 0);
+    await stopped;
     bridge.dispose();
     await engine.dispose();
     win.destroy();

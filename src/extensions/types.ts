@@ -1,9 +1,4 @@
-export type ExtensionStatus =
-  | 'disabled'
-  | 'starting'
-  | 'active'
-  | 'error'
-  | 'reload-required';
+export type ExtensionStatus = 'disabled' | 'starting' | 'active' | 'error';
 export interface ExtensionMetadata {
   id: string;
   name: string;
@@ -12,9 +7,18 @@ export interface ExtensionMetadata {
   defaultEnabled: boolean;
   main: boolean;
   page: boolean;
+  hooks?: boolean;
 }
 export interface ExtensionState extends ExtensionMetadata {
   enabled: boolean;
+  reloadRequired: boolean;
+  reloadReason: string | null;
+  layers: Partial<
+    Record<
+      'main' | 'page' | 'hooks',
+      'disabled' | 'starting' | 'active' | 'error'
+    >
+  >;
   status: ExtensionStatus;
   error: string | null;
 }
@@ -59,11 +63,48 @@ export interface PageConfiguration {
   document: string;
   revision: number;
   items: { id: string; enabled: boolean }[];
+  hooks?: { id: string; enabled: boolean }[];
 }
 export interface PageReport {
+  layer: 'page';
+  instance: string;
+  reloadReason: string | null;
   document: string;
   revision: number;
   id: string;
-  status: 'active' | 'disabled' | 'error' | 'reload-required';
+  status: 'active' | 'disabled' | 'error';
   error: string | null;
+}
+
+// A hook must install synchronously. Cleanup's explicit undefined result excludes
+// async functions; the runtime must also check results from untyped modules.
+export type HookCleanup = () => undefined;
+export interface HookExtensionContext {
+  onCleanup(cleanup: HookCleanup): void;
+  reportError(message: string): void;
+  requireReload(reason: string): void;
+  signal: AbortSignal;
+  wrap(
+    target: object,
+    key: PropertyKey,
+    intercept: (
+      original: (...args: any[]) => any,
+      receiver: unknown,
+      args: unknown[],
+    ) => unknown,
+  ): void;
+}
+export type HookExtensionStart = (context: HookExtensionContext) => HookCleanup;
+
+// All cross-world payloads are bounded, validated diagnostic data. They confer
+// no authority to change configuration or issue application commands.
+export interface HookReport {
+  document: string;
+  revision: number;
+  id: string;
+  instance: string;
+  layer: 'hooks';
+  status: 'active' | 'disabled' | 'error';
+  error: string | null;
+  reloadReason: string | null;
 }
