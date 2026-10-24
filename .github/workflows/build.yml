@@ -66,9 +66,16 @@ jobs:
       - name: Check types
         run: npm run typecheck
 
-      # Forge has no signing or notarization configured; no secrets are needed.
+      # macOS uses ad-hoc signing without an Apple certificate or notarization.
       - name: Build packages
         run: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+
+      - name: Verify macOS Universal package
+        if: runner.os == 'macOS'
+        run: |
+          app="out/Tubevra-darwin-universal/Tubevra.app"
+          lipo -verify_arch x86_64 arm64 "$app/Contents/MacOS/Tubevra"
+          codesign --verify --deep --strict --verbose=2 "$app"
 
       - name: Upload packages
         uses: actions/upload-artifact@v7

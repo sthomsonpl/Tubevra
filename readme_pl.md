@@ -27,7 +27,7 @@ Buduj na systemie docelowym. `package` tworzy folder aplikacji, a `make` dodatko
 | Linux x64                               | `npm run package -- --platform=linux --arch=x64`        | `npm run make -- --platform=linux --arch=x64`        | DEB + RPM + ZIP   |
 | Linux arm64                             | `npm run package -- --platform=linux --arch=arm64`      | `npm run make -- --platform=linux --arch=arm64`      | DEB + RPM + ZIP   |
 
-DEB/RPM buduj na Linuxie (bezpośrednio, WSL2, maszyna wirtualna lub CI) z `dpkg`, `fakeroot`, `rpmbuild` i `zip` w `PATH`. macOS Universal i DMG buduj na macOS; podpisywanie kodu i notaryzacja nie są skonfigurowane.
+DEB/RPM buduj na Linuxie (bezpośrednio, WSL2, maszyna wirtualna lub CI) z `dpkg`, `fakeroot`, `rpmbuild` i `zip` w `PATH`. macOS Universal i DMG buduj na macOS; skonfigurowany jest tylko podpis ad hoc, bez certyfikatu Apple Developer ID i notaryzacji.
 
 - Foldery aplikacji: `out/Tubevra-<platform>-<arch>/`.
 - Instalatory: `out/make/nsis/<arch>/`, `out/make/dmg/<arch>/`, `out/make/deb/<arch>/` i `out/make/rpm/<arch>/`.
@@ -39,7 +39,7 @@ DEB/RPM buduj na Linuxie (bezpośrednio, WSL2, maszyna wirtualna lub CI) z `dpkg
 
 Każde uruchomienie buduje wszystkie pięć wariantów z powyższej tabeli. Paczki pobierzesz z sekcji **Artifacts** na stronie uruchomienia workflow; są pogrupowane według platformy i architektury oraz przechowywane przez 14 dni. Windows ARM64 jest pakowany na runnerze Windows x64, a Linux ARM64 na natywnym runnerze ARM64.
 
-Sekrety do podpisywania nie są wymagane. macOS Universal zawiera pliki dla Intela i Apple Silicon i jest budowany bez podpisywania kodu oraz notaryzacji. Workflow przesyła wyłącznie artefakty budowania; nie publikuje GitHub Releases.
+Sekrety do podpisywania nie są wymagane. macOS Universal zawiera pliki dla Intela i Apple Silicon. Podpis ad hoc jest nakładany po scaleniu architektur, bez certyfikatu Apple Developer ID i notaryzacji. Workflow sprawdza obie architektury i podpis ad hoc. Przesyła wyłącznie artefakty budowania; nie publikuje GitHub Releases.
 
 ## Podziękowania
 
