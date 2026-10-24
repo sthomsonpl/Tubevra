@@ -74,7 +74,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           app="out/Tubevra-darwin-universal/Tubevra.app"
-          lipo -verify_arch x86_64 arm64 "$app/Contents/MacOS/Tubevra"
+          lipo "$app/Contents/MacOS/Tubevra" -verify_arch x86_64 arm64
           codesign --verify --deep --strict --verbose=2 "$app"
 
       - name: Upload packages
