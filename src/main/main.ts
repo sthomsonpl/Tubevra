@@ -1,9 +1,8 @@
 import { app, BrowserWindow, dialog, Menu } from 'electron';
-import started from 'electron-squirrel-startup';
 import { UserAgentStore } from './user-agent-store';
 import { createTVWindow } from './tv-window';
 
-if (started || !app.requestSingleInstanceLock()) {
+if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   Menu.setApplicationMenu(null);

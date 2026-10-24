@@ -11,25 +11,27 @@ Still in early development.
 You'll need Node.js 22.13.0 or newer and npm. From the project directory:
 
 ```sh
-npm ci
+npm install
 npm start
 ```
 
 ## Build
 
-Build on the target system:
+Build on the target operating system. `package` creates an application folder; `make` also creates the formats below, including a portable ZIP.
 
-| Build on | Command                             | Installer / archive         |
-| -------- | ----------------------------------- | --------------------------- |
-| Windows  | `npm run make -- --platform=win32`  | Squirrel installer (`.exe`) |
-| macOS    | `npm run make -- --platform=darwin` | ZIP archive                 |
-| Linux    | `npm run make -- --platform=linux`  | DEB and RPM packages        |
+| System / architecture                   | Application folder                                      | Installers + portable                                | Formats           |
+| --------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------- | ----------------- |
+| Windows x64                             | `npm run package -- --platform=win32 --arch=x64`        | `npm run make -- --platform=win32 --arch=x64`        | Setup (EXE) + ZIP |
+| Windows arm64                           | `npm run package -- --platform=win32 --arch=arm64`      | `npm run make -- --platform=win32 --arch=arm64`      | Setup (EXE) + ZIP |
+| macOS Universal (Intel + Apple Silicon) | `npm run package -- --platform=darwin --arch=universal` | `npm run make -- --platform=darwin --arch=universal` | DMG + ZIP         |
+| Linux x64                               | `npm run package -- --platform=linux --arch=x64`        | `npm run make -- --platform=linux --arch=x64`        | DEB + RPM + ZIP   |
+| Linux arm64                             | `npm run package -- --platform=linux --arch=arm64`      | `npm run make -- --platform=linux --arch=arm64`      | DEB + RPM + ZIP   |
 
-Creates a portable version in `out/Tubevra-<platform>-<arch>/` and an installer or archive in `out/make/`.
+Build DEB/RPM on Linux (native, WSL2, VM or CI) with `dpkg`, `fakeroot`, `rpmbuild` and `zip` in `PATH`. Build macOS Universal and DMG on macOS; code signing and notarization are not configured.
 
-To build only the portable version, use `npm run package`.
-
-Without `--platform`, the current system is used. Architecture defaults to your machine's; add `--arch=x64` or `--arch=arm64` if the target supports it. On Linux, you'll also need `dpkg` and `rpmbuild` in your `PATH`.
+- Application folders: `out/Tubevra-<platform>-<arch>/`.
+- Installers: `out/make/nsis/<arch>/`, `out/make/dmg/<arch>/`, `out/make/deb/<arch>/` and `out/make/rpm/<arch>/`.
+- Portable ZIPs: `out/make/zip/<platform>/<arch>/`. Extract and run `Tubevra.exe` (Windows), `Tubevra.app` (macOS) or `Tubevra` (Linux), keeping the bundled files together. Data stays in the normal user profile.
 
 ## Thanks
 
