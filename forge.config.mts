@@ -14,14 +14,23 @@ const config: ForgeConfig = {
     appBundleId: 'com.sthomsonpl.tubevra',
     icon: './assets/icon/icon',
     osxUniversal: { mergeASARs: true },
+    // Defer ad-hoc signing until after the Universal slices have been merged.
+    // Otherwise the fuses plugin signs only arm64, adding unmatched resources.
+    osxSign: {
+      identity: '-',
+      identityValidation: false,
+      optionsForFile: () => ({ timestamp: 'none' }),
+      continueOnError: false,
+    },
   },
   rebuildConfig: {},
   makers: [
     new MakerNsis({}),
     new MakerDMG({ format: 'ULFO' }, ['darwin']),
     new MakerPortableZIP({}, ['win32', 'darwin', 'linux']),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    // The packaged executable uses productName's case, not package.json's name.
+    new MakerRpm({ options: { bin: 'Tubevra' } }),
+    new MakerDeb({ options: { bin: 'Tubevra' } }),
   ],
   plugins: [
     new VitePlugin({

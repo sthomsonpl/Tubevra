@@ -27,7 +27,7 @@ Build on the target operating system. `package` creates an application folder; `
 | Linux x64                               | `npm run package -- --platform=linux --arch=x64`        | `npm run make -- --platform=linux --arch=x64`        | DEB + RPM + ZIP   |
 | Linux arm64                             | `npm run package -- --platform=linux --arch=arm64`      | `npm run make -- --platform=linux --arch=arm64`      | DEB + RPM + ZIP   |
 
-Build DEB/RPM on Linux (native, WSL2, VM or CI) with `dpkg`, `fakeroot`, `rpmbuild` and `zip` in `PATH`. Build macOS Universal and DMG on macOS; code signing and notarization are not configured.
+Build DEB/RPM on Linux (native, WSL2, VM or CI) with `dpkg`, `fakeroot`, `rpmbuild` and `zip` in `PATH`. Build macOS Universal and DMG on macOS; only ad-hoc signing is configured, without an Apple Developer ID certificate or notarization.
 
 - Application folders: `out/Tubevra-<platform>-<arch>/`.
 - Installers: `out/make/nsis/<arch>/`, `out/make/dmg/<arch>/`, `out/make/deb/<arch>/` and `out/make/rpm/<arch>/`.
@@ -39,7 +39,7 @@ The [Build workflow](.github/workflows/build.yml) runs only manually. Once the w
 
 Each run builds all five targets from the table above. Download the packages from **Artifacts** on the workflow run page; they are grouped by platform and architecture and retained for 14 days. Windows ARM64 is packaged on a Windows x64 runner; Linux ARM64 uses a native ARM64 runner.
 
-No signing secrets are required. macOS Universal contains both Intel and Apple Silicon binaries and is built without code signing or notarization. The workflow uploads build artifacts only; it does not publish GitHub Releases.
+No signing secrets are required. macOS Universal contains both Intel and Apple Silicon binaries. Ad-hoc signing runs after merging the architectures, without an Apple Developer ID certificate or notarization. The workflow verifies both architectures and the ad-hoc signature. It uploads build artifacts only; it does not publish GitHub Releases.
 
 ## Thanks
 
