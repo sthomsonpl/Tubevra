@@ -122,6 +122,29 @@ export async function createTVWindow(store: UserAgentStore) {
   toolbar.setBorderRadius(TOOLBAR_STYLE.borderRadius);
   toolbar.setBackgroundBlur(TOOLBAR_STYLE.backgroundBlur);
   mainWindow.contentView.addChildView(toolbar);
+  for (const surface of [
+    mainWindow.webContents,
+    contents,
+    toolbar.webContents,
+  ]) {
+    surface.on('before-input-event', (event, input) => {
+      if (
+        input.type !== 'keyDown' ||
+        input.key !== 'F11' ||
+        input.isComposing ||
+        input.control ||
+        input.alt ||
+        input.shift ||
+        input.meta
+      )
+        return;
+
+      event.preventDefault();
+      if (!input.isAutoRepeat) {
+        mainWindow.setFullScreen(!mainWindow.isFullScreen());
+      }
+    });
+  }
   const dock = connectToolbarAutoHide(
     mainWindow,
     toolbar,
