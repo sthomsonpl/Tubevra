@@ -33,6 +33,14 @@ DEB/RPM buduj na Linuxie (bezpośrednio, WSL2, maszyna wirtualna lub CI) z `dpkg
 - Instalatory: `out/make/nsis/<arch>/`, `out/make/dmg/<arch>/`, `out/make/deb/<arch>/` i `out/make/rpm/<arch>/`.
 - ZIP-y portable: `out/make/zip/<platform>/<arch>/`. Rozpakuj i uruchom `Tubevra.exe` (Windows), `Tubevra.app` (macOS) lub `Tubevra` (Linux), zachowując pozostałe pliki. Dane pozostają w standardowym profilu użytkownika.
 
+### GitHub Actions
+
+[Workflow Build](.github/workflows/build.yml) uruchamia się wyłącznie ręcznie. Gdy plik workflow znajdzie się na domyślnej gałęzi repozytorium, otwórz **Actions → Build → Run workflow**, wybierz gałąź i rozpocznij budowanie. Push, pull request i tag nie uruchamiają budowania.
+
+Każde uruchomienie buduje wszystkie pięć wariantów z powyższej tabeli. Paczki pobierzesz z sekcji **Artifacts** na stronie uruchomienia workflow; są pogrupowane według platformy i architektury oraz przechowywane przez 14 dni. Windows ARM64 jest pakowany na runnerze Windows x64, a Linux ARM64 na natywnym runnerze ARM64.
+
+Sekrety do podpisywania nie są wymagane. macOS Universal zawiera pliki dla Intela i Apple Silicon i jest budowany bez podpisywania kodu oraz notaryzacji. Workflow przesyła wyłącznie artefakty budowania; nie publikuje GitHub Releases.
+
 ## Podziękowania
 
 Inspiracją są TizenTube & TizenTube Cobalt. Więcej w [informacjach o projektach i zależnościach](THIRD_PARTY_NOTICES.md).

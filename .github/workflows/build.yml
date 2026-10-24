@@ -1,0 +1,85 @@
+name: Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-2025
+            platform: win32
+            arch: x64
+            artifact: Tubevra-windows-x64
+          # NSIS and Forge can package Windows ARM64 on a Windows x64 host.
+          - name: Windows ARM64
+            os: windows-2025
+            platform: win32
+            arch: arm64
+            artifact: Tubevra-windows-arm64
+          - name: Linux x64
+            os: ubuntu-24.04
+            platform: linux
+            arch: x64
+            artifact: Tubevra-linux-x64
+          - name: Linux ARM64
+            os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+            artifact: Tubevra-linux-arm64
+          - name: macOS Universal
+            os: macos-15
+            platform: darwin
+            arch: universal
+            artifact: Tubevra-macos-universal
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes dpkg fakeroot rpm zip
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check types
+        run: npm run typecheck
+
+      # Forge has no signing or notarization configured; no secrets are needed.
+      - name: Build packages
+        run: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            out/make/**/*.exe
+            out/make/**/*.zip
+            out/make/**/*.deb
+            out/make/**/*.rpm
+            out/make/**/*.dmg
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
