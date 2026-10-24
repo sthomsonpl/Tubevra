@@ -33,6 +33,14 @@ Build DEB/RPM on Linux (native, WSL2, VM or CI) with `dpkg`, `fakeroot`, `rpmbui
 - Installers: `out/make/nsis/<arch>/`, `out/make/dmg/<arch>/`, `out/make/deb/<arch>/` and `out/make/rpm/<arch>/`.
 - Portable ZIPs: `out/make/zip/<platform>/<arch>/`. Extract and run `Tubevra.exe` (Windows), `Tubevra.app` (macOS) or `Tubevra` (Linux), keeping the bundled files together. Data stays in the normal user profile.
 
+### GitHub Actions
+
+The [Build workflow](.github/workflows/build.yml) runs only manually. Once the workflow is on the repository's default branch, open **Actions → Build → Run workflow**, select a branch and start the build. Pushes, pull requests and tags do not start builds.
+
+Each run builds all five targets from the table above. Download the packages from **Artifacts** on the workflow run page; they are grouped by platform and architecture and retained for 14 days. Windows ARM64 is packaged on a Windows x64 runner; Linux ARM64 uses a native ARM64 runner.
+
+No signing secrets are required. macOS Universal contains both Intel and Apple Silicon binaries and is built without code signing or notarization. The workflow uploads build artifacts only; it does not publish GitHub Releases.
+
 ## Thanks
 
 Inspired by TizenTube & TizenTube Cobalt. See [third-party notices](THIRD_PARTY_NOTICES.md).
