@@ -19,7 +19,16 @@ const config: ForgeConfig = {
     osxSign: {
       identity: '-',
       identityValidation: false,
-      optionsForFile: () => ({ timestamp: 'none' }),
+      optionsForFile: () => ({
+        timestamp: 'none',
+        hardenedRuntime: true,
+        entitlements: [
+          'com.apple.security.cs.allow-jit',
+          // Ad-hoc signatures have no Team ID for library validation. Remove
+          // this exception when switching to a Developer ID certificate.
+          'com.apple.security.cs.disable-library-validation',
+        ],
+      }),
       continueOnError: false,
     },
   },

@@ -41,6 +41,8 @@ Each run builds all five targets from the table above. Download the packages fro
 
 No signing secrets are required. macOS Universal contains both Intel and Apple Silicon binaries. Ad-hoc signing runs after merging the architectures, without an Apple Developer ID certificate or notarization. The workflow verifies both architectures and the ad-hoc signature. It uploads build artifacts only; it does not publish GitHub Releases.
 
+Ad-hoc macOS builds retain Hardened Runtime and allow JIT compilation, but disable Library Validation because ad-hoc signatures have no Team ID. The workflow checks these entitlements on the app and its helpers. Remove the Library Validation exception when switching to Developer ID signing.
+
 ## Thanks
 
 Inspired by TizenTube & TizenTube Cobalt. See [third-party notices](THIRD_PARTY_NOTICES.md).

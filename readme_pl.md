@@ -41,6 +41,8 @@ Każde uruchomienie buduje wszystkie pięć wariantów z powyższej tabeli. Pacz
 
 Sekrety do podpisywania nie są wymagane. macOS Universal zawiera pliki dla Intela i Apple Silicon. Podpis ad hoc jest nakładany po scaleniu architektur, bez certyfikatu Apple Developer ID i notaryzacji. Workflow sprawdza obie architektury i podpis ad hoc. Przesyła wyłącznie artefakty budowania; nie publikuje GitHub Releases.
 
+Buildy macOS podpisane ad hoc zachowują Hardened Runtime i pozwalają na kompilację JIT, ale wyłączają Library Validation, ponieważ podpis ad hoc nie zawiera Team ID. Workflow sprawdza te uprawnienia w aplikacji i jej procesach pomocniczych. Przy przejściu na podpis Developer ID usuń wyjątek Library Validation.
+
 ## Podziękowania
 
 Inspiracją są TizenTube & TizenTube Cobalt. Więcej w [informacjach o projektach i zależnościach](THIRD_PARTY_NOTICES.md).

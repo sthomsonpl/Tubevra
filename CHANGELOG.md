@@ -7,4 +7,4 @@
 -
 
 ### Fixed
-- Fixed F11 fullscreen toggle.
+- Fixed app startup on macOS.

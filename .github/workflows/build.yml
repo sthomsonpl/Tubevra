@@ -76,6 +76,14 @@ jobs:
           app="out/Tubevra-darwin-universal/Tubevra.app"
           lipo "$app/Contents/MacOS/Tubevra" -verify_arch x86_64 arm64
           codesign --verify --deep --strict --verbose=2 "$app"
+          # Ad-hoc builds need this exception on the app and every helper.
+          entitlements="$RUNNER_TEMP/tubevra-entitlements.plist"
+          for bundle in "$app" "$app/Contents/Frameworks/"*Helper*.app; do
+            codesign --display --entitlements - --xml "$bundle" > "$entitlements"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.cs.allow-jit' "$entitlements")" = true
+            test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.cs.disable-library-validation' "$entitlements")" = true
+            codesign --display --verbose=4 "$bundle" 2>&1 | grep 'flags=.*runtime' > /dev/null
+          done
 
       - name: Upload packages
         uses: actions/upload-artifact@v7
