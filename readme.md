@@ -6,6 +6,10 @@ An unofficial YouTube client built with Electron and TypeScript for Windows, mac
 
 Still in early development.
 
+## Features
+
+- **Adblock** — blocks ads in YouTube TV. Shorts ads are not yet supported.
+
 ## Run
 
 You'll need Node.js 22.13.0 or newer and npm. From the project directory:
