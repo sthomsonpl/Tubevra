@@ -14,13 +14,20 @@ Planowane funkcjonalności nie są automatycznie częścią bieżącego zadania.
 ## Zasady pracy
 
 - Realizuj wyłącznie uzgodniony zakres zadania.
-- Nie wykonuj nieuzgodnionych refaktorów ani zmian architektury.
 - Zachowuj istniejące rozwiązania i działające funkcjonalności.
 - Preferuj prosty, czytelny kod bez zbędnych abstrakcji.
 - Wykorzystuj istniejące komponenty, zanim utworzysz nowe.
-- Większe zmiany architektoniczne wymagają wcześniejszej akceptacji.
 - Nie modyfikuj plików niezwiązanych z zadaniem.
 - Nie dodawaj zależności bez uzasadnienia.
+
+## Granice architektury i zakres zmian
+
+- **Zachowuj istniejący podział odpowiedzialności** procesów Electron (`main`, `preload`, `renderer`), kodu współdzielonego (`shared`) i modułów rozszerzeń (`extensions`). Nie przenoś logiki między nimi bez uzasadnienia i wcześniejszej zgody użytkownika.
+- **Zachowuj odrębność TV Mode i Desktop Mode.** Podobieństwo funkcjonalności nie uzasadnia automatycznego scalania ich sterowania, integracji z YouTube ani zarządzania stanem.
+- **Współdziel mechanizmy i komponenty tam, gdzie jest to uzasadnione.** Tryby aplikacji i rozszerzenia mogą korzystać ze wspólnej infrastruktury, zachowując własną logikę, stan i interfejsy. Nie przenoś zachowania specyficznego dla jednego trybu lub rozszerzenia do pozostałych.
+- **Nie wykonuj nieuzgodnionych zmian architektonicznych.** Zmiana granic modułów, podziału odpowiedzialności, kontraktów IPC lub sposobu integracji rozszerzeń wymaga przedstawienia propozycji, uzasadnienia i wpływu na istniejące funkcjonalności oraz wcześniejszej zgody użytkownika.
+- **Preferuj minimalne, uzasadnione zmiany.** Lokalne refaktoryzacje niezbędne do realizacji zatwierdzonego planu są dozwolone, jeśli mieszczą się w jego zakresie, zachowują istniejącą architekturę i zachowanie pozostałych funkcjonalności.
+- Jeśli zmiana architektury lub rozszerzenie zakresu okaże się korzystne albo konieczne podczas pracy, przedstaw aktualizację planu i uzyskaj jej zatwierdzenie przed wdrożeniem tych zmian.
 
 ## Sterowanie
 
@@ -53,14 +60,19 @@ Planowane funkcjonalności nie są automatycznie częścią bieżącego zadania.
 ## Workflow
 
 1. Przeanalizuj istotny kod przed zmianami.
-2. Przy większych zadaniach przedstaw krótki plan.
-3. Implementuj wyłącznie uzgodniony zakres.
-4. Przeprowadź adekwatne testy.
-5. Podsumuj zmiany, wyniki testów i ewentualne problemy.
+2. Przed każdą implementacją, naprawą błędu lub refaktoryzacją przedstaw krótki plan obejmujący cel, zakres zmian, dotknięte moduły lub pliki, wpływ na istniejące funkcjonalności, istotne ryzyka i sposób weryfikacji. Szczegółowość planu dostosuj do wielkości zadania.
+3. **Poczekaj na wyraźne zatwierdzenie planu przez użytkownika przed rozpoczęciem zmian.** Samo zlecenie zadania ani brak odpowiedzi nie oznaczają akceptacji planu. Jeżeli użytkownik wcześniej wyraźnie zatwierdził konkretny plan, nie proś ponownie o tę samą zgodę.
+4. Implementuj wyłącznie zatwierdzony zakres. Jeśli potrzebna jest zmiana zakresu, architektury lub istotnych założeń, przedstaw zaktualizowany plan i poczekaj na jego zatwierdzenie przed wykonaniem zmian, których dotyczy aktualizacja. Czynności mieszczące się w zatwierdzonym planie nie wymagają osobnych zatwierdzeń.
+5. Przeprowadź adekwatne testy.
+6. Podsumuj zmiany, wyniki testów i ewentualne problemy.
 
-Jeżeli zadanie dotyczy tylko analizy, nie modyfikuj kodu.
+Analiza i odczyt plików potrzebne do przygotowania planu nie wymagają jego zatwierdzenia. Jeżeli zadanie dotyczy tylko analizy, nie modyfikuj kodu.
 
 Uwzględniaj dodatkowe instrukcje z `.agents/`, jeśli dotyczą aktualnego zadania.
+
+- [`.agents/architecture.md`](.agents/architecture.md) — przy zmianach w podziale odpowiedzialności, widokach Electron, konfiguracji i systemie rozszerzeń.
+- [`.agents/developement.md`](.agents/developement.md) — przy implementacji, testowaniu i dokumentowaniu zmian.
+- [`.agents/security.md`](.agents/security.md) — przy zmianach w IPC, preloadach, nawigacji, uprawnieniach, rozszerzeniach i zapisie konfiguracji.
 
 
 ## Git & Commits
