@@ -521,6 +521,17 @@
   border-top: 1px solid var(--border-hairline);
 }
 
+.general-restart {
+  margin-top: auto;
+  flex: none;
+}
+
+.general-restart .row-icon {
+  color: #facc15;
+  background: #facc1512;
+  border-color: #facc1533;
+}
+
 .row-icon,
 .preset-icon {
   width: 28px;

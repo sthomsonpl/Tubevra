@@ -4,6 +4,9 @@ import type { AppState, TubevraAPI } from '../shared/api';
 import type { ExtensionsState } from '../extensions/types';
 
 const api: TubevraAPI = {
+  setHardwareAcceleration: (enabled) =>
+    ipcRenderer.invoke(IPC.setHardwareAcceleration, enabled),
+  restartApp: () => ipcRenderer.invoke(IPC.restartApp),
   openProjectGitHub: () => ipcRenderer.invoke(IPC.openProjectGitHub),
   reloadTV: () => ipcRenderer.invoke(IPC.reloadTV),
   getExtensions: () => ipcRenderer.invoke(IPC.getExtensions),

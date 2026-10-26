@@ -18,8 +18,14 @@ export type UserAgentCommand =
   | { type: 'edit'; id: string; name: string; userAgent: string }
   | { type: 'remove'; id: string; replacementId?: string };
 
+export interface GeneralSettingsState {
+  hardwareAcceleration: boolean;
+  restartRequired: boolean;
+}
+
 export interface AppState {
   version: string;
+  general: GeneralSettingsState;
   mode: 'tv';
   extensions: ExtensionsState;
   userAgents: UserAgentState;
@@ -43,6 +49,8 @@ export interface ExtensionsAPI {
 }
 
 export interface TubevraAPI extends ExtensionsAPI {
+  setHardwareAcceleration(enabled: boolean): Promise<Result<AppState>>;
+  restartApp(): Promise<Result<AppState>>;
   openProjectGitHub(): Promise<Result<null>>;
   reloadTV(): Promise<Result<AppState>>;
   getState(): Promise<Result<AppState>>;
@@ -53,6 +61,8 @@ export interface TubevraAPI extends ExtensionsAPI {
 }
 
 export const IPC = Object.freeze({
+  setHardwareAcceleration: 'tubevra:set-hardware-acceleration',
+  restartApp: 'tubevra:restart-app',
   openProjectGitHub: 'tubevra:open-project-github',
   getState: 'tubevra:get-state',
   reloadTV: 'tubevra:reload-tv',

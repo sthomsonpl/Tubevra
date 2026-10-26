@@ -17,6 +17,7 @@ import { pathToFileURL } from 'node:url';
 import { IPC, PROJECT_GITHUB_URL } from '../shared/api';
 import type { AppState, Result } from '../shared/api';
 import type { UserAgentStore } from './user-agent-store';
+import { GeneralSettingsStore } from './general-settings-store';
 import { selectTVDisplay } from './tv-display';
 import { connectTVDisplay } from './tv-display-bridge';
 import { connectToolbarAutoHide } from './toolbar-auto-hide';
@@ -36,7 +37,10 @@ function isTVURL(value: string) {
   }
 }
 
-export async function createTVWindow(store: UserAgentStore) {
+export async function createTVWindow(
+  store: UserAgentStore,
+  general = GeneralSettingsStore.open(app.getPath('userData')),
+) {
   const display = selectTVDisplay(
     screen.getAllDisplays(),
     screen.getPrimaryDisplay().id,
@@ -170,6 +174,7 @@ export async function createTVWindow(store: UserAgentStore) {
   let loading = true;
   const state = (): AppState => ({
     version: app.getVersion(),
+    general: general.snapshot(),
     mode: 'tv',
     extensions: extensions.snapshot(),
     userAgents: store.snapshot(),
@@ -363,6 +368,19 @@ export async function createTVWindow(store: UserAgentStore) {
       };
     }
   });
+  handle(IPC.setHardwareAcceleration, async (...args) => {
+    if (args.length !== 1)
+      throw new Error('Expected one hardware acceleration flag.');
+    await general.setHardwareAcceleration(args[0]);
+    publish();
+  });
+  handle(IPC.restartApp, (...args) => {
+    if (args.length) throw new Error('Unexpected arguments.');
+    if (!general.snapshot().restartRequired)
+      throw new Error('No general settings require a restart.');
+    app.relaunch();
+    app.quit();
+  });
   handle(IPC.reloadTV, async (...args) => {
     if (args.length) throw new Error('Unexpected arguments.');
     const url = contents.getURL();
@@ -493,6 +511,8 @@ export async function createTVWindow(store: UserAgentStore) {
       .catch((cause) => console.error('Extension shutdown failed:', cause));
     for (const channel of [
       IPC.getState,
+      IPC.setHardwareAcceleration,
+      IPC.restartApp,
       IPC.openProjectGitHub,
       IPC.getExtensions,
       IPC.setExtensionEnabled,
