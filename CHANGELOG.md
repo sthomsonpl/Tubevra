@@ -9,4 +9,4 @@
 -
 
 ### Fixed
-
+- Fixed dock hover in inactive windows.

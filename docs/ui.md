@@ -44,6 +44,14 @@ dock still auto-hides/reveals in window fullscreen, and settings remain accessib
 F11 ignores modifiers, auto-repeat and IME composition. No new keyboard shortcut
 is introduced by the dock button.
 
+The bottom hover strip reveals the dock even when the window is inactive, so
+returning from another application does not require an activation click. Hover
+does not activate or raise Tubevra, and hiding the dock only restores content
+focus inside an already active window. Cursor detection uses screen coordinates:
+a covering window can cause the dock to reveal underneath it, while retaining
+focus. Minimized/hidden windows and HTML playback fullscreen keep it hidden.
+Keyboard navigation keeps the dock visible only while Tubevra is active.
+
 ## Settings behaviour
 
 - Built-ins have readable names but retain their supplied UA strings verbatim.
@@ -105,3 +113,21 @@ version. The full UI suite stops later at `idle SponsorBlock has no status row`;
 the fullscreen checks run before that unrelated scenario. Type checking and
 lint/format checks for the changed files pass; repository-wide formatting reports
 37 other files. macOS, Linux and physical IME remain unverified.
+
+## Inactive-window dock verification on Windows, 2026-10-27
+
+Run `npm run test:dock` to exercise the current source controller with native
+Electron windows and views in a disposable profile. The regression test failed
+before the fix when returning the cursor to the inactive window's bottom strip.
+After the fix, reveal/hide keeps the other window focused. The test also covers
+keyboard visibility, restoring content focus in the active window, covering
+windows, minimize/restore, native fullscreen, playback-fullscreen suppression
+and settings pinning with a focused input. The report is written to
+`out/verification/dock/report.json`.
+
+Cursor coordinates are simulated; focus, views and dock animations use Electron.
+The fixture uses always-on-top test windows to ensure their surfaces are painted;
+production windows retain their existing behaviour. Playback fullscreen and
+settings are exercised through the dock controller's state, without the complete
+application or IPC. This is not OS mouse hit testing, a distribution-package test
+or live YouTube verification. macOS, Linux and physical IME remain unverified.

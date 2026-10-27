@@ -10,6 +10,7 @@ if (
     'ui-smoke',
     'hardware-smoke',
     'glass-probe',
+    'dock-smoke',
     'live-smoke',
     'runtime-smoke',
     'hooks-smoke',

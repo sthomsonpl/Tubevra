@@ -73,7 +73,8 @@ export function connectToolbarAutoHide(
     desired = next;
     const current = ++revision;
     outsideSince = null;
-    if (!next && toolbar.webContents.isFocused()) restoreFocus();
+    if (!next && window.isFocused() && toolbar.webContents.isFocused())
+      restoreFocus();
     if (immediate || failed) {
       preparing = false;
       moving = false;
@@ -147,22 +148,21 @@ export function connectToolbarAutoHide(
       void transition(true);
       return;
     }
-    let hovered = false;
-    if (window.isFocused()) {
-      const cursor = screen.getCursorScreenPoint();
-      const content = window.getContentBounds();
-      const { width, height } = window.contentView.getBounds();
-      const x = cursor.x - content.x;
-      const y = cursor.y - content.y;
-      hovered =
-        x >= 0 &&
-        x < width &&
-        y < height &&
-        (y >= height - TRIGGER_HEIGHT ||
-          ((live || moving) &&
-            Math.abs(x - width / 2) < WIDTH / 2 + 30 &&
-            y >= height - TRAVEL - 8));
-    }
+    // Hover must work before the window is activated by a click. Checking the
+    // cursor does not activate or raise the window, including when covered.
+    const cursor = screen.getCursorScreenPoint();
+    const content = window.getContentBounds();
+    const { width, height } = window.contentView.getBounds();
+    const x = cursor.x - content.x;
+    const y = cursor.y - content.y;
+    const hovered =
+      x >= 0 &&
+      x < width &&
+      y < height &&
+      (y >= height - TRIGGER_HEIGHT ||
+        ((live || moving) &&
+          Math.abs(x - width / 2) < WIDTH / 2 + 30 &&
+          y >= height - TRAVEL - 8));
     if (hovered || (window.isFocused() && keyboardFocus)) {
       outsideSince = null;
       void transition(true);

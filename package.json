@@ -22,6 +22,7 @@
     "test:ui": "node tests/electron/run.cjs ui-smoke",
     "test:hardware": "node tests/electron/run.cjs hardware-smoke",
     "test:glass": "node tests/electron/run.cjs glass-probe",
+    "test:dock": "node tests/electron/run.cjs dock-smoke",
     "test:extensions": "node --test tests/extensions.test.cjs tests/extension-build.test.mjs",
     "test:runtime": "node --test tests/runtime.test.cjs tests/hooks.test.cjs tests/extension-services.test.cjs",
     "test:sponsorblock": "node --test tests/sponsorblock.test.cjs",
