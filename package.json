@@ -1,7 +1,7 @@
 {
   "name": "tubevra",
   "productName": "Tubevra",
-  "version": "0.2.0-0.dev",
+  "version": "0.2.0-alpha",
   "private": true,
   "description": "Unofficial desktop YouTube client with TV and Desktop modes",
   "author": "sthomsonpl",
