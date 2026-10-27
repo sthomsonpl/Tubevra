@@ -145,7 +145,7 @@ export async function createTVWindow(
 
       event.preventDefault();
       if (!input.isAutoRepeat) {
-        mainWindow.setFullScreen(!mainWindow.isFullScreen());
+        void toggleFullscreen().catch((cause) => reportError(cause.message));
       }
     });
   }
@@ -179,6 +179,7 @@ export async function createTVWindow(
     extensions: extensions.snapshot(),
     userAgents: store.snapshot(),
     playbackFullscreen,
+    windowFullscreen: mainWindow.isFullScreen(),
     settingsOpen,
     loading,
     error,
@@ -216,6 +217,51 @@ export async function createTVWindow(
     syncVisibility();
     publish();
   };
+  mainWindow.on('enter-full-screen', publish);
+  mainWindow.on('leave-full-screen', publish);
+
+  let fullscreenTransition: Promise<void> | null = null;
+  function toggleFullscreen(): Promise<void> {
+    // F11 and the dock share one in-flight native transition, including on macOS.
+    if (fullscreenTransition) return fullscreenTransition;
+    const target = !mainWindow.isFullScreen();
+    const transition = new Promise<void>((resolve, reject) => {
+      const completed = () => {
+        if (mainWindow.isFullScreen() !== target) return;
+        clear();
+        resolve();
+      };
+      const closed = () => {
+        clear();
+        reject(
+          new Error('The window closed during the fullscreen transition.'),
+        );
+      };
+      const clear = () => {
+        clearTimeout(timeout);
+        mainWindow.removeListener('enter-full-screen', completed);
+        mainWindow.removeListener('leave-full-screen', completed);
+        mainWindow.removeListener('closed', closed);
+      };
+      const timeout = setTimeout(() => {
+        clear();
+        reject(new Error('The fullscreen transition did not complete.'));
+      }, 10000);
+      mainWindow.on('enter-full-screen', completed);
+      mainWindow.on('leave-full-screen', completed);
+      mainWindow.once('closed', closed);
+      try {
+        mainWindow.setFullScreen(target);
+      } catch (cause) {
+        clear();
+        reject(cause);
+      }
+    });
+    fullscreenTransition = transition.finally(() => {
+      fullscreenTransition = null;
+    });
+    return fullscreenTransition;
+  }
   const displayBridge = connectTVDisplay(
     ipcMain,
     contents,
@@ -329,6 +375,22 @@ export async function createTVWindow(
     if (args.length) return { ok: false, error: 'Unexpected arguments.' };
     return { ok: true, value: state() };
   });
+  ipcMain.handle(
+    IPC.toggleFullscreen,
+    async (event, ...args): Promise<Result<AppState>> => {
+      assertShell(event);
+      if (args.length) return { ok: false, error: 'Unexpected arguments.' };
+      try {
+        await toggleFullscreen();
+        return { ok: true, value: state() };
+      } catch (cause) {
+        const message =
+          cause instanceof Error ? cause.message : 'Fullscreen failed.';
+        reportError(message);
+        return { ok: false, error: message };
+      }
+    },
+  );
   ipcMain.handle(
     IPC.openProjectGitHub,
     async (event, ...args): Promise<Result<null>> => {
@@ -524,6 +586,7 @@ export async function createTVWindow(
       .catch((cause) => console.error('Extension shutdown failed:', cause));
     for (const channel of [
       IPC.getState,
+      IPC.toggleFullscreen,
       IPC.setHardwareAcceleration,
       IPC.restartApp,
       IPC.openProjectGitHub,

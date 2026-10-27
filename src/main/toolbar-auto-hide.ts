@@ -2,7 +2,7 @@ import { ImageView, screen, View } from 'electron';
 import type { BrowserWindow, WebContentsView } from 'electron';
 import { TOOLBAR_STYLE } from './toolbar-style';
 
-const WIDTH = 300;
+const WIDTH = 400;
 const HEIGHT = 68;
 const GAP = 20;
 const TRAVEL = HEIGHT + GAP;

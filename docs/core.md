@@ -30,8 +30,9 @@ atomic replacement. Updates are serialized. Failed writes leave the last
 committed state intact; malformed or unsupported configuration is reported and
 preserved, with no automatic reset.
 
-The local preload exposes only `getState`, `updateUserAgents`, `navigate`,
-`setSettingsOpen` and `onStateChanged` through `window.tubevra`. Mutation commands are `add`, `edit`,
+The local preload exposes narrow application operations through `window.tubevra`,
+including `getState`, `updateUserAgents`, `navigate`, `toggleFullscreen`,
+`setSettingsOpen` and `onStateChanged`. User-Agent mutation commands are `add`, `edit`,
 `remove` and `select`. Built-ins cannot be edited or removed. Removing an active
 custom preset requires an explicit, existing `replacementId`. New custom IDs
 are generated in the main process. Names are limited to 100 characters and UA
@@ -65,6 +66,21 @@ payloads. Remote top-level navigation is restricted to
 are denied; fullscreen is allowed for the TV view. External login windows and
 non-TV top-level navigation are not supported at this stage and produce a visible
 message. These limits must be revisited explicitly if a real flow requires them.
+
+## Window fullscreen
+
+The dock button and unmodified F11 share `BrowserWindow.setFullScreen` in the
+main process. `windowFullscreen` is read from `isFullScreen`, and native
+`enter-full-screen` / `leave-full-screen` events publish state changes, including
+changes initiated outside the dock. Overlapping requests share the current
+transition; completion waits for the native event (asynchronous on macOS).
+Failure to complete within ten seconds is reported visibly. The no-argument IPC
+operation accepts only the trusted local shell/toolbar main frames and is removed
+when the window closes. YouTube receives no application API.
+
+Window fullscreen is runtime state, not a saved preference. It is separate from
+HTML player fullscreen (`playbackFullscreen`), which retains its existing dock
+suppression behavior.
 
 ## Verification boundary
 

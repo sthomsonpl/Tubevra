@@ -30,6 +30,7 @@ export interface AppState {
   extensions: ExtensionsState;
   userAgents: UserAgentState;
   playbackFullscreen: boolean;
+  windowFullscreen: boolean;
   settingsOpen: boolean;
   loading: boolean;
   error: string | null;
@@ -49,6 +50,7 @@ export interface ExtensionsAPI {
 }
 
 export interface TubevraAPI extends ExtensionsAPI {
+  toggleFullscreen(): Promise<Result<AppState>>;
   setHardwareAcceleration(enabled: boolean): Promise<Result<AppState>>;
   restartApp(): Promise<Result<AppState>>;
   openProjectGitHub(): Promise<Result<null>>;
@@ -62,6 +64,7 @@ export interface TubevraAPI extends ExtensionsAPI {
 }
 
 export const IPC = Object.freeze({
+  toggleFullscreen: 'tubevra:toggle-fullscreen',
   setHardwareAcceleration: 'tubevra:set-hardware-acceleration',
   restartApp: 'tubevra:restart-app',
   openProjectGitHub: 'tubevra:open-project-github',
