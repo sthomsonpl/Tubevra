@@ -9,6 +9,7 @@ Projekt na wczesnym etapie rozwoju.
 ## Funkcje
 
 - **Adblock** — blokuje reklamy w YouTube TV. Reklamy w Shorts nie są jeszcze obsługiwane.
+- **SponsorBlock** — automatycznie pomija segmenty sponsorowane w YouTube TV; domyślnie wyłączony. Uses SponsorBlock data from [https://sponsor.ajay.app/](https://sponsor.ajay.app/).
 
 ## Uruchamianie
 

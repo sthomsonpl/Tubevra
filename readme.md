@@ -9,6 +9,7 @@ Still in early development.
 ## Features
 
 - **Adblock** — blocks ads in YouTube TV. Shorts ads are not yet supported.
+- **SponsorBlock** — automatically skips sponsor segments in YouTube TV; disabled by default. Uses SponsorBlock data from [https://sponsor.ajay.app/](https://sponsor.ajay.app/).
 
 ## Run
 
