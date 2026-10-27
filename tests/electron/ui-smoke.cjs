@@ -162,11 +162,15 @@ app
       'tubevra:open-project-github',
     );
     const trusted = { sender: shell, senderFrame: shell.mainFrame };
+    const toggleFullscreen = ipcMain._invokeHandlers.get(
+      'tubevra:toggle-fullscreen',
+    );
     for (const handler of [
       getExtensions,
       setExtension,
       reloadTV,
       openProjectGitHub,
+      toggleFullscreen,
     ]) {
       for (const event of [
         { sender: tv, senderFrame: tv.mainFrame },
@@ -177,6 +181,8 @@ app
       }
     }
     assert.equal(getExtensions(trusted, 'extra').ok, false);
+    assert.equal((await toggleFullscreen(trusted, 'extra')).ok, false);
+    assert.equal(win.isFullScreen(), false);
     for (const command of [
       null,
       {},
@@ -190,6 +196,130 @@ app
       (await openProjectGitHub(trusted, 'https://example.com')).ok,
       false,
     );
+    {
+      let area = win.contentView.getBounds();
+      const moveCursor = (x, y) => {
+        const content = win.getContentBounds();
+        cursor = { x: content.x + x, y: content.y + y };
+      };
+      const dockShown = () =>
+        win.contentView.children
+          .find((view) => view.webContents === toolbar)
+          .getVisible() &&
+        !win.contentView.children
+          .find((view) => view.constructor.name === 'View')
+          .getVisible();
+      const toolbarView = win.contentView.children.find(
+        (view) => view.webContents === toolbar,
+      );
+      assert.ok(toolbarView);
+      const bounds = toolbarView.getBounds();
+      assert.equal(bounds.width, 400);
+      assert.equal(bounds.height, 68);
+      const fullscreenButton = () =>
+        toolbar.executeJavaScript(`({
+      pressed: document.querySelector('#fullscreen').getAttribute('aria-pressed'),
+      label: document.querySelector('#fullscreen').getAttribute('aria-label'),
+      disabled: document.querySelector('#fullscreen').disabled,
+    })`);
+      const waitFullscreen = async (expected) => {
+        await waitFor(
+          async () =>
+            win.isFullScreen() === expected &&
+            (await state()).windowFullscreen === expected &&
+            (await fullscreenButton()).pressed === String(expected) &&
+            !(await fullscreenButton()).disabled,
+          `native fullscreen ${expected} synchronized with dock`,
+        );
+        area = win.contentView.getBounds();
+        moveCursor(area.width / 2, area.height - 2);
+        await waitFor(dockShown, 'dock remains available in native fullscreen');
+        const dockBounds = toolbarView.getBounds();
+        assert.equal(dockBounds.x, Math.round((area.width - 400) / 2));
+        assert.equal(dockBounds.y + dockBounds.height, area.height - 20);
+      };
+      await click(toolbar, 'fullscreen');
+      await waitFullscreen(true);
+      assert.equal((await state()).playbackFullscreen, false);
+      assert.equal((await fullscreenButton()).label, 'Exit fullscreen');
+      await capture(win, 'window-fullscreen');
+      await click(toolbar, 'settings');
+      await waitFor(
+        async () => (await state()).settingsOpen,
+        'settings in native fullscreen',
+      );
+      assert.equal(win.isFullScreen(), true);
+      await click(toolbar, 'settings');
+      await waitFor(
+        async () => !(await state()).settingsOpen,
+        'close fullscreen settings',
+      );
+      await click(toolbar, 'fullscreen');
+      await waitFullscreen(false);
+      assert.equal((await fullscreenButton()).label, 'Enter fullscreen');
+      for (const surface of [tv, toolbar, shell]) {
+        surface.focus();
+        surface.sendInputEvent({ type: 'keyDown', keyCode: 'F11' });
+        surface.sendInputEvent({ type: 'keyUp', keyCode: 'F11' });
+        await waitFullscreen(true);
+        await click(toolbar, 'fullscreen');
+        await waitFullscreen(false);
+      }
+      // Native changes outside the button/F11 path must also update the dock.
+      win.setFullScreen(true);
+      await waitFullscreen(true);
+      win.setFullScreen(false);
+      await waitFullscreen(false);
+      // Delay the native call to exercise overlapping requests even on Windows,
+      // where a real transition can complete before the next IPC is delivered.
+      const nativeSetFullScreen = win.setFullScreen.bind(win);
+      let nativeCalls = 0;
+      win.setFullScreen = (flag) => {
+        nativeCalls++;
+        setTimeout(() => nativeSetFullScreen(flag), 100);
+      };
+      try {
+        const results = await Promise.all([
+          toggleFullscreen(trusted),
+          toggleFullscreen(trusted),
+        ]);
+        assert.ok(results.every((result) => result.ok));
+        assert.equal(nativeCalls, 1);
+        await waitFullscreen(true);
+      } finally {
+        win.setFullScreen = nativeSetFullScreen;
+      }
+      await click(toolbar, 'fullscreen');
+      await waitFullscreen(false);
+      checks.push(
+        'dock fullscreen toggle, F11 on all surfaces, native state events, settings, bounds and concurrent transition guard',
+      );
+      await tv.executeJavaScript(
+        'document.querySelector("#player").requestFullscreen()',
+        true,
+      );
+      await waitFor(
+        async () => (await state()).playbackFullscreen,
+        'HTML fullscreen',
+      );
+      assert.equal(toolbarView.getVisible(), false);
+      await tv.executeJavaScript('document.exitFullscreen()');
+      await waitFor(
+        async () => !(await state()).playbackFullscreen,
+        'fullscreen exit',
+      );
+      moveCursor(area.width / 2, win.contentView.getBounds().height - 2);
+      win.focus();
+      await waitFor(dockShown, 'dock restores after fullscreen');
+      checks.push(
+        'bounded native toolbar and automatic hide/restore on actual HTML fullscreen',
+      );
+      assert.deepEqual(errors, []);
+      fs.writeFileSync(
+        path.join(output, 'fullscreen-report.json'),
+        JSON.stringify({ checks, errors, profile }, null, 2),
+      );
+    }
     await shell.executeJavaScript(
       `document.querySelector('[data-section="extensions"]').click()`,
     );
@@ -203,7 +333,7 @@ app
       (
         await shell.executeJavaScript('window.tubevra.getExtensions()')
       ).value.items.map((item) => item.id),
-      ['adblock'],
+      ['adblock', 'sponsorblock'],
     );
     await shell.executeJavaScript(
       `document.querySelector('[data-section="user-agents"]').click()`,
@@ -344,6 +474,105 @@ app
     await waitFor(() => requests.length > beforeReload, 'explicit reload');
     await idle();
     await engine.dispose();
+    const {
+      sponsorMainContext,
+    } = require('../../src/extensions/sponsorblock/main.ts');
+    const {
+      sponsorAvailability,
+    } = require('../../src/extensions/sponsorblock/diagnostics.ts');
+    let reportAvailability;
+    let broadcastAvailability = () => {};
+    const statusEngine = await TubervaExtensions.open(
+      path.join(profile, 'sponsor-status-ui-test'),
+      [
+        {
+          id: 'sponsorblock',
+          name: 'SponsorBlock',
+          description: 'Test only',
+          modes: ['tv'],
+          main: true,
+          page: true,
+          defaultEnabled: true,
+        },
+      ],
+      { onBeforeRequest() {} },
+      {
+        sponsorblock: (context) => {
+          const sponsor = sponsorMainContext(context);
+          sponsor.registerSponsorSegments(() => ({ kind: 'empty' }));
+          reportAvailability = sponsor.reportSponsorAvailability;
+          return () => {};
+        },
+      },
+      () => broadcastAvailability(),
+    );
+    while (statusEngine.snapshot().revision <= engine.snapshot().revision)
+      statusEngine.resetPage();
+    broadcastAvailability = () =>
+      shell.send('tubevra:extensions:state-changed', statusEngine.snapshot());
+    await statusEngine.reportPage({
+      layer: 'page',
+      document: 'ui-fixture',
+      instance: '1',
+      reloadReason: null,
+      id: 'sponsorblock',
+      revision: statusEngine.snapshot().revision,
+      status: 'active',
+      error: null,
+    });
+    broadcastAvailability();
+    await waitFor(
+      () =>
+        shell.executeJavaScript(`
+        document.querySelector('#panel-extensions .extension-attribution-link') &&
+        !document.querySelector('#panel-extensions [role="status"]')
+      `),
+      'idle SponsorBlock has no status row',
+    );
+    await shell.executeJavaScript(
+      'document.querySelector("#panel-extensions input").focus()',
+    );
+    const oldSnapshot = statusEngine.snapshot();
+    const revision = oldSnapshot.revision;
+    reportAvailability('network-error');
+    await waitFor(
+      async () => (await panelText()).includes('Network error'),
+      'visible service failure',
+    );
+    assert.equal(statusEngine.snapshot().revision, revision);
+    assert.equal(statusEngine.snapshot().items[0].status, 'active');
+    assert.equal(statusEngine.snapshot().items[0].error, null);
+    assert.equal(
+      await shell.executeJavaScript(
+        'document.activeElement?.getAttribute("aria-label")',
+      ),
+      'Enable SponsorBlock',
+    );
+    shell.send('tubevra:extensions:state-changed', oldSnapshot);
+    await idle();
+    assert.ok((await panelText()).includes('Network error'));
+    for (const [kind, label] of [
+      ['service-error', 'SponsorBlock unavailable'],
+      ['timeout', 'Request timed out'],
+      ['invalid-data', 'Invalid segment data'],
+      ['rate-limited', 'Request limit reached'],
+      ['busy', 'Temporarily busy'],
+      ['available', 'Active'],
+    ]) {
+      reportAvailability(kind);
+      await waitFor(
+        async () => (await panelText()).includes(label),
+        `service status ${kind}`,
+      );
+    }
+    await statusEngine.update({ id: 'sponsorblock', enabled: false });
+    await waitFor(
+      async () => (await panelText()).includes('Disabled'),
+      'disabled service status cleared',
+    );
+    reportAvailability('network-error');
+    assert.equal(sponsorAvailability(statusEngine.snapshot().items[0]), null);
+    await statusEngine.dispose();
     ipcMain.removeHandler('tubevra:extensions:set-enabled');
     ipcMain.handle('tubevra:extensions:set-enabled', setExtension);
     shell.send('tubevra:extensions:state-changed', (await state()).extensions);
@@ -352,6 +581,9 @@ app
     );
     checks.push(
       'Extensions test engine: toggles, runtime status, failure, disable and explicit reload',
+    );
+    checks.push(
+      'SponsorBlock availability, stale state ordering and focus preservation',
     );
     await shell.executeJavaScript('window.tubevra.setSettingsOpen(false)');
     const dockView = win.contentView.children.find(
@@ -818,34 +1050,6 @@ app
     tv.focus();
     checks.push(
       'media keeps playing while minimized; manual pause survives minimize/restore',
-    );
-
-    const toolbarView = win.contentView.children.find(
-      (view) => view.webContents === toolbar,
-    );
-    assert.ok(toolbarView);
-    const bounds = toolbarView.getBounds();
-    assert.equal(bounds.width, 300);
-    assert.equal(bounds.height, 68);
-    await tv.executeJavaScript(
-      'document.querySelector("#player").requestFullscreen()',
-      true,
-    );
-    await waitFor(
-      async () => (await state()).playbackFullscreen,
-      'HTML fullscreen',
-    );
-    assert.equal(toolbarView.getVisible(), false);
-    await tv.executeJavaScript('document.exitFullscreen()');
-    await waitFor(
-      async () => !(await state()).playbackFullscreen,
-      'fullscreen exit',
-    );
-    moveCursor(area.width / 2, win.contentView.getBounds().height - 2);
-    win.focus();
-    await waitFor(dockShown, 'dock restores after fullscreen');
-    checks.push(
-      'bounded native toolbar and automatic hide/restore on actual HTML fullscreen',
     );
 
     await click(toolbar, 'settings');

@@ -11,6 +11,7 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    extraResource: ['LICENSE', 'THIRD_PARTY_NOTICES.md'],
     appBundleId: 'com.sthomsonpl.tubevra',
     icon: './assets/icon/icon',
     osxUniversal: { mergeASARs: true },

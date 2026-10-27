@@ -8,7 +8,7 @@ remains a separate sandboxed `WebContentsView`. The toolbar is another local
 No Tubevra DOM, styles or Shadow DOM are inserted into YouTube.
 
 CSS `z-index` in the application shell cannot place its DOM above a native
-sibling view. The actual toolbar therefore occupies a bounded 300 × 68 DIP
+sibling view. The actual toolbar therefore occupies a bounded 400 × 68 DIP
 native surface, centred 20 DIP above the content area's bottom edge. Bounds are
 updated from the root view's `bounds-changed` event, including native menu layout
 changes. There is no full-window transparent input overlay or mouse forwarding.
@@ -33,9 +33,24 @@ keyboard input and occluded Windows surfaces may not have a current painted fram
 Application windows are not made always-on-top in production.
 
 HTML fullscreen in the YouTube view hides the native toolbar, including its hit
-area. Exiting fullscreen restores it. Opening settings hides both YouTube and the
-toolbar and focuses the local shell; closing settings restores the TV view. A
+area. Exiting fullscreen restores it. Opening settings hides YouTube, pins the
+dock and focuses the local shell; closing settings restores the TV view. A
 change of UA while settings are open does not steal the form's focus.
+
+The dock contains Back, Home, Fullscreen and Settings. Fullscreen toggles the native
+Electron window, with the icon, label, tooltip and `aria-pressed` following native
+window events and F11. The button is disabled while its request is pending. The
+dock still auto-hides/reveals in window fullscreen, and settings remain accessible.
+F11 ignores modifiers, auto-repeat and IME composition. No new keyboard shortcut
+is introduced by the dock button.
+
+The bottom hover strip reveals the dock even when the window is inactive, so
+returning from another application does not require an activation click. Hover
+does not activate or raise Tubevra, and hiding the dock only restores content
+focus inside an already active window. Cursor detection uses screen coordinates:
+a covering window can cause the dock to reveal underneath it, while retaining
+focus. Minimized/hidden windows and HTML playback fullscreen keep it hidden.
+Keyboard navigation keeps the dock visible only while Tubevra is active.
 
 ## Settings behaviour
 
@@ -81,3 +96,38 @@ Run `npm run package`, then `npm run test:ui`. Run `npm run test:glass` for the
 local blur comparison. An optional read-only live check is available via
 `node tests/electron/run.cjs live-smoke`. These tests use isolated disposable
 profiles and do not read or reset the user's Tubevra configuration.
+
+## Fullscreen verification on Windows, 2026-10-27
+
+The Electron UI test passed native fullscreen entry/exit through the dock,
+F11 on all three surfaces, state updates from native window events, settings
+inside window fullscreen, dock bounds and overlapping request handling. Actual
+HTML fullscreen on the local fixture also hid and restored the dock. The test
+writes `out/verification/ui/fullscreen-report.json` after these checks complete.
+
+Verification used current production Vite bundles in a test-only ASAR with the
+installed Electron runtime and a disposable profile. This is a local fixture
+check, not live YouTube or a complete distribution-package test. Normal packaging
+is blocked by Windows version metadata parsing of the existing `0.2.0-0.dev`
+version. The full UI suite stops later at `idle SponsorBlock has no status row`;
+the fullscreen checks run before that unrelated scenario. Type checking and
+lint/format checks for the changed files pass; repository-wide formatting reports
+37 other files. macOS, Linux and physical IME remain unverified.
+
+## Inactive-window dock verification on Windows, 2026-10-27
+
+Run `npm run test:dock` to exercise the current source controller with native
+Electron windows and views in a disposable profile. The regression test failed
+before the fix when returning the cursor to the inactive window's bottom strip.
+After the fix, reveal/hide keeps the other window focused. The test also covers
+keyboard visibility, restoring content focus in the active window, covering
+windows, minimize/restore, native fullscreen, playback-fullscreen suppression
+and settings pinning with a focused input. The report is written to
+`out/verification/dock/report.json`.
+
+Cursor coordinates are simulated; focus, views and dock animations use Electron.
+The fixture uses always-on-top test windows to ensure their surfaces are painted;
+production windows retain their existing behaviour. Playback fullscreen and
+settings are exercised through the dock controller's state, without the complete
+application or IPC. This is not OS mouse hit testing, a distribution-package test
+or live YouTube verification. macOS, Linux and physical IME remain unverified.

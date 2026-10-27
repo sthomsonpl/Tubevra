@@ -18,12 +18,19 @@ export type UserAgentCommand =
   | { type: 'edit'; id: string; name: string; userAgent: string }
   | { type: 'remove'; id: string; replacementId?: string };
 
+export interface GeneralSettingsState {
+  hardwareAcceleration: boolean;
+  restartRequired: boolean;
+}
+
 export interface AppState {
   version: string;
+  general: GeneralSettingsState;
   mode: 'tv';
   extensions: ExtensionsState;
   userAgents: UserAgentState;
   playbackFullscreen: boolean;
+  windowFullscreen: boolean;
   settingsOpen: boolean;
   loading: boolean;
   error: string | null;
@@ -43,7 +50,11 @@ export interface ExtensionsAPI {
 }
 
 export interface TubevraAPI extends ExtensionsAPI {
+  toggleFullscreen(): Promise<Result<AppState>>;
+  setHardwareAcceleration(enabled: boolean): Promise<Result<AppState>>;
+  restartApp(): Promise<Result<AppState>>;
   openProjectGitHub(): Promise<Result<null>>;
+  openSponsorBlock(): Promise<Result<null>>;
   reloadTV(): Promise<Result<AppState>>;
   getState(): Promise<Result<AppState>>;
   updateUserAgents(command: UserAgentCommand): Promise<Result<AppState>>;
@@ -53,7 +64,11 @@ export interface TubevraAPI extends ExtensionsAPI {
 }
 
 export const IPC = Object.freeze({
+  toggleFullscreen: 'tubevra:toggle-fullscreen',
+  setHardwareAcceleration: 'tubevra:set-hardware-acceleration',
+  restartApp: 'tubevra:restart-app',
   openProjectGitHub: 'tubevra:open-project-github',
+  openSponsorBlock: 'tubevra:open-sponsorblock',
   getState: 'tubevra:get-state',
   reloadTV: 'tubevra:reload-tv',
   updateUserAgents: 'tubevra:update-user-agents',
@@ -68,3 +83,4 @@ export const IPC = Object.freeze({
 });
 
 export const PROJECT_GITHUB_URL = 'https://github.com/sthomsonpl/Tubevra';
+export const SPONSORBLOCK_URL = 'https://sponsor.ajay.app/';

@@ -42,23 +42,40 @@ export function validateCatalog(catalog) {
 }
 function layerSource(catalog, layer) {
   const imports = [],
-    entries = [];
+    entries = [],
+    modules = [];
   for (const item of catalog) {
     if (!item.modules[layer]) continue;
     const alias = 'start' + entries.length;
     imports.push(
-      'import { start as ' +
-        alias +
-        ' } from ' +
+      (layer === 'main'
+        ? 'import * as ' + alias
+        : 'import { start as ' + alias + ' }') +
+        ' from ' +
         JSON.stringify(
           normalize(path.resolve(extensions, item.modules[layer])),
         ) +
         ';',
     );
-    entries.push(JSON.stringify(item.id) + ': ' + alias);
+    entries.push(
+      JSON.stringify(item.id) +
+        ': ' +
+        alias +
+        (layer === 'main' ? '.start' : ''),
+    );
+    modules.push('[' + JSON.stringify(item.id) + ', ' + alias + ']');
   }
   return (
-    imports.join('\n') + '\nexport const starts = {' + entries.join(',') + '};'
+    imports.join('\n') +
+    '\nexport const starts = {' +
+    entries.join(',') +
+    '};' +
+    (layer === 'main'
+      ? '\nexport const connections = Object.fromEntries([' +
+        modules.join(',') +
+        '].filter(([, module]) => typeof module.connect === "function")' +
+        '.map(([id, module]) => [id, module.connect]));'
+      : '')
   );
 }
 export async function buildHookEntry(

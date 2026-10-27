@@ -76,6 +76,24 @@ app
         'document.querySelector("#panel-extensions").textContent',
       );
     await waitFor(async () => (await state()).items[0]?.status === 'active');
+    const sponsorState = async () =>
+      (await state()).items.find(
+        (item: { id: string }) => item.id === 'sponsorblock',
+      );
+    assert.equal((await sponsorState()).enabled, false);
+    assert.equal((await sponsorState()).status, 'disabled');
+    for (const enabled of [true, false, true, false]) {
+      const result = await shell.executeJavaScript(
+        `window.tubevra.setExtensionEnabled({id:'sponsorblock',enabled:${enabled}})`,
+      );
+      assert.equal(result.ok, true);
+      await waitFor(
+        async () =>
+          (await sponsorState()).status === (enabled ? 'active' : 'disabled'),
+      );
+      assert.equal((await sponsorState()).reloadRequired, false);
+      assert.equal((await state()).items[0].status, 'active');
+    }
     const parse = () =>
       tv.executeJavaScript('JSON.parse(payload).adSlots.length');
     assert.equal(await tv.executeJavaScript('firstResult.adSlots.length'), 0);
@@ -183,6 +201,7 @@ app
         passed: true,
         checks: [
           'production Adblock and serialized player/feed helpers',
+          'SponsorBlock default state, repeated toggles and Adblock coexistence',
           'first script',
           'CSP',
           'isolation',

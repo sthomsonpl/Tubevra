@@ -1,6 +1,7 @@
 import type { AppState, Result, UserAgentCommand } from '../shared/api';
 import { PROJECT_GITHUB_URL } from '../shared/api';
 import { mountExtensions } from './extensions/settings';
+import { createWidgetToggle } from './widgets';
 
 type SectionId = 'general' | 'tv' | 'user-agents' | 'extensions' | 'about';
 type PresetTab = 'default' | 'user';
@@ -16,7 +17,7 @@ const SECTION_META: Record<SectionId, { title: string; subtitle: string }> = {
   },
   general: {
     title: 'General',
-    subtitle: 'Application session and quick actions.',
+    subtitle: 'Application preferences and quick actions.',
   },
   tv: {
     title: 'TV',
@@ -194,6 +195,16 @@ export function mountSettings(root: HTMLElement) {
             <div class="widget-box">
               <div class="widget-row">
                 <span class="row-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 3v3m6-3v3M9 18v3m6-3v3M3 9h3m-3 6h3m12-6h3m-3 6h3"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+                </span>
+                <div class="row-copy">
+                  <strong>Hardware acceleration</strong>
+                  <p id="hardware-acceleration-description">Enable hardware acceleration. Requires a restart.</p>
+                </div>
+                <span id="hardware-acceleration-control"></span>
+              </div>
+              <div class="widget-row">
+                <span class="row-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                 </span>
                 <div class="row-copy">
@@ -201,6 +212,19 @@ export function mountSettings(root: HTMLElement) {
                   <p>Reload the main Leanback interface while keeping your session</p>
                 </div>
                 <button id="reload-home" class="secondary compact-btn" type="button">Reload</button>
+              </div>
+            </div>
+            <p id="general-feedback" class="feedback" role="status" aria-live="polite"></p>
+            <div id="general-restart" class="widget-box general-restart" hidden>
+              <div class="widget-row">
+                <span class="row-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 9v5m0 3h.01"/></svg>
+                </span>
+                <div class="row-copy">
+                  <strong>Restart required</strong>
+                  <p role="status">Restart Tubevra to apply the hardware acceleration setting.</p>
+                </div>
+                <button id="restart-app" class="secondary compact-btn" type="button">Restart Tubevra</button>
               </div>
             </div>
           </div>
@@ -309,6 +333,16 @@ export function mountSettings(root: HTMLElement) {
   const element = <T extends HTMLElement = HTMLElement>(id: string) =>
     root.querySelector<T>(`#${id}`)!;
   const name = element<HTMLInputElement>('preset-name');
+  const hardwareAcceleration = createWidgetToggle(
+    'hardware acceleration',
+    true,
+  );
+  hardwareAcceleration.input.id = 'hardware-acceleration';
+  hardwareAcceleration.input.setAttribute(
+    'aria-describedby',
+    'hardware-acceleration-description',
+  );
+  element('hardware-acceleration-control').append(hardwareAcceleration.label);
   const extensions = mountExtensions(element('panel-extensions'));
   const value = element<HTMLTextAreaElement>('preset-value');
   const form = element<HTMLFormElement>('preset-form');
@@ -382,6 +416,10 @@ export function mountSettings(root: HTMLElement) {
     element<HTMLButtonElement>('delete-preset').disabled = busy || dirty;
     element<HTMLButtonElement>('done').disabled = busy;
     element<HTMLButtonElement>('reload-home').disabled = busy;
+    hardwareAcceleration.input.disabled = busy || !current;
+    hardwareAcceleration.input.checked =
+      current?.general.hardwareAcceleration ?? true;
+    element<HTMLButtonElement>('restart-app').disabled = busy || dirty;
     element<HTMLButtonElement>('confirm-delete').disabled =
       busy || (active && !replacement.value);
     element<HTMLButtonElement>('cancel-delete').disabled = busy;
@@ -498,6 +536,7 @@ export function mountSettings(root: HTMLElement) {
   function render(state: AppState) {
     const wasOpen = current?.settingsOpen;
     current = state;
+    element('general-restart').hidden = !state.general.restartRequired;
     element('app-version').textContent = state.version;
     extensions.render(state.extensions);
     const showConnection =
@@ -535,29 +574,31 @@ export function mountSettings(root: HTMLElement) {
     action: () => Promise<Result<AppState>>,
     success?: (state: AppState) => void,
     successMessage = '',
+    output = feedback,
   ) {
     if (busy) return;
+    const report = (text: string, failure = false) => {
+      output.textContent = text;
+      output.classList.toggle('error', failure);
+    };
     busy = true;
     controls();
-    message('Working…');
+    report('Working…');
     try {
       const result = await action();
-      if (result.ok === false) message(result.error, true);
+      if (result.ok === false) report(result.error, true);
       else {
         render(result.value);
         success?.(result.value);
         if (successMessage && result.value.error) {
-          message(
+          report(
             'Saved. YouTube TV could not reload. See the error above.',
             true,
           );
-        } else message(successMessage);
+        } else report(successMessage);
       }
     } catch {
-      message(
-        'Cannot communicate with Tubevra. Your form has been kept.',
-        true,
-      );
+      report('Cannot communicate with Tubevra. Your form has been kept.', true);
     } finally {
       busy = false;
       controls();
@@ -607,6 +648,23 @@ export function mountSettings(root: HTMLElement) {
   });
   element('reload-home').addEventListener('click', () => {
     void run(() => window.tubevra.navigate('home'));
+  });
+  hardwareAcceleration.input.addEventListener('change', () => {
+    const enabled = hardwareAcceleration.input.checked;
+    void run(
+      () => window.tubevra.setHardwareAcceleration(enabled),
+      undefined,
+      '',
+      element('general-feedback'),
+    );
+  });
+  element('restart-app').addEventListener('click', () => {
+    void run(
+      () => window.tubevra.restartApp(),
+      undefined,
+      '',
+      element('general-feedback'),
+    );
   });
   form.addEventListener('input', () => {
     dirty = true;

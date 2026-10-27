@@ -14,9 +14,10 @@ import { extensionRegistry, hookManifest } from '../extensions/registry';
 import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { IPC, PROJECT_GITHUB_URL } from '../shared/api';
+import { IPC, PROJECT_GITHUB_URL, SPONSORBLOCK_URL } from '../shared/api';
 import type { AppState, Result } from '../shared/api';
 import type { UserAgentStore } from './user-agent-store';
+import { GeneralSettingsStore } from './general-settings-store';
 import { selectTVDisplay } from './tv-display';
 import { connectTVDisplay } from './tv-display-bridge';
 import { connectToolbarAutoHide } from './toolbar-auto-hide';
@@ -36,7 +37,10 @@ function isTVURL(value: string) {
   }
 }
 
-export async function createTVWindow(store: UserAgentStore) {
+export async function createTVWindow(
+  store: UserAgentStore,
+  general = GeneralSettingsStore.open(app.getPath('userData')),
+) {
   const display = selectTVDisplay(
     screen.getAllDisplays(),
     screen.getPrimaryDisplay().id,
@@ -141,7 +145,7 @@ export async function createTVWindow(store: UserAgentStore) {
 
       event.preventDefault();
       if (!input.isAutoRepeat) {
-        mainWindow.setFullScreen(!mainWindow.isFullScreen());
+        void toggleFullscreen().catch((cause) => reportError(cause.message));
       }
     });
   }
@@ -170,10 +174,12 @@ export async function createTVWindow(store: UserAgentStore) {
   let loading = true;
   const state = (): AppState => ({
     version: app.getVersion(),
+    general: general.snapshot(),
     mode: 'tv',
     extensions: extensions.snapshot(),
     userAgents: store.snapshot(),
     playbackFullscreen,
+    windowFullscreen: mainWindow.isFullScreen(),
     settingsOpen,
     loading,
     error,
@@ -211,6 +217,51 @@ export async function createTVWindow(store: UserAgentStore) {
     syncVisibility();
     publish();
   };
+  mainWindow.on('enter-full-screen', publish);
+  mainWindow.on('leave-full-screen', publish);
+
+  let fullscreenTransition: Promise<void> | null = null;
+  function toggleFullscreen(): Promise<void> {
+    // F11 and the dock share one in-flight native transition, including on macOS.
+    if (fullscreenTransition) return fullscreenTransition;
+    const target = !mainWindow.isFullScreen();
+    const transition = new Promise<void>((resolve, reject) => {
+      const completed = () => {
+        if (mainWindow.isFullScreen() !== target) return;
+        clear();
+        resolve();
+      };
+      const closed = () => {
+        clear();
+        reject(
+          new Error('The window closed during the fullscreen transition.'),
+        );
+      };
+      const clear = () => {
+        clearTimeout(timeout);
+        mainWindow.removeListener('enter-full-screen', completed);
+        mainWindow.removeListener('leave-full-screen', completed);
+        mainWindow.removeListener('closed', closed);
+      };
+      const timeout = setTimeout(() => {
+        clear();
+        reject(new Error('The fullscreen transition did not complete.'));
+      }, 10000);
+      mainWindow.on('enter-full-screen', completed);
+      mainWindow.on('leave-full-screen', completed);
+      mainWindow.once('closed', closed);
+      try {
+        mainWindow.setFullScreen(target);
+      } catch (cause) {
+        clear();
+        reject(cause);
+      }
+    });
+    fullscreenTransition = transition.finally(() => {
+      fullscreenTransition = null;
+    });
+    return fullscreenTransition;
+  }
   const displayBridge = connectTVDisplay(
     ipcMain,
     contents,
@@ -325,6 +376,22 @@ export async function createTVWindow(store: UserAgentStore) {
     return { ok: true, value: state() };
   });
   ipcMain.handle(
+    IPC.toggleFullscreen,
+    async (event, ...args): Promise<Result<AppState>> => {
+      assertShell(event);
+      if (args.length) return { ok: false, error: 'Unexpected arguments.' };
+      try {
+        await toggleFullscreen();
+        return { ok: true, value: state() };
+      } catch (cause) {
+        const message =
+          cause instanceof Error ? cause.message : 'Fullscreen failed.';
+        reportError(message);
+        return { ok: false, error: message };
+      }
+    },
+  );
+  ipcMain.handle(
     IPC.openProjectGitHub,
     async (event, ...args): Promise<Result<null>> => {
       assertShell(event);
@@ -338,6 +405,19 @@ export async function createTVWindow(store: UserAgentStore) {
           error:
             cause instanceof Error ? cause.message : 'Could not open GitHub.',
         };
+      }
+    },
+  );
+  ipcMain.handle(
+    IPC.openSponsorBlock,
+    async (event, ...args): Promise<Result<null>> => {
+      assertShell(event);
+      if (args.length) return { ok: false, error: 'Unexpected arguments.' };
+      try {
+        await shell.openExternal(SPONSORBLOCK_URL);
+        return { ok: true, value: null };
+      } catch {
+        return { ok: false, error: 'Could not open SponsorBlock.' };
       }
     },
   );
@@ -362,6 +442,19 @@ export async function createTVWindow(store: UserAgentStore) {
             : 'Extension operation failed.',
       };
     }
+  });
+  handle(IPC.setHardwareAcceleration, async (...args) => {
+    if (args.length !== 1)
+      throw new Error('Expected one hardware acceleration flag.');
+    await general.setHardwareAcceleration(args[0]);
+    publish();
+  });
+  handle(IPC.restartApp, (...args) => {
+    if (args.length) throw new Error('Unexpected arguments.');
+    if (!general.snapshot().restartRequired)
+      throw new Error('No general settings require a restart.');
+    app.relaunch();
+    app.quit();
   });
   handle(IPC.reloadTV, async (...args) => {
     if (args.length) throw new Error('Unexpected arguments.');
@@ -493,7 +586,11 @@ export async function createTVWindow(store: UserAgentStore) {
       .catch((cause) => console.error('Extension shutdown failed:', cause));
     for (const channel of [
       IPC.getState,
+      IPC.toggleFullscreen,
+      IPC.setHardwareAcceleration,
+      IPC.restartApp,
       IPC.openProjectGitHub,
+      IPC.openSponsorBlock,
       IPC.getExtensions,
       IPC.setExtensionEnabled,
       IPC.reloadTV,

@@ -9,16 +9,18 @@ import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
+import assert from 'node:assert/strict';
+import { getCurrentFuseWire, FuseState, FuseV1Options } from '@electron/fuses';
 
 if (process.platform !== 'win32' || process.arch !== 'x64')
   throw Error(
     'Packaged hook verification currently supports Windows x64 only.',
   );
 const adblock = process.argv.includes('--adblock');
-if (adblock && process.argv.includes('--live'))
-  throw Error(
-    'The Adblock package test uses local data; --live is unsupported.',
-  );
+const sponsorblock = process.argv.includes('--sponsorblock');
+if (adblock && sponsorblock) throw Error('Choose one packaged extension test.');
+if ((adblock || sponsorblock) && process.argv.includes('--live'))
+  throw Error('Extension package tests use local data; --live is unsupported.');
 const root = await mkdtemp(path.join(os.tmpdir(), 'tubevra-packaged-hooks-'));
 if (
   path.dirname(path.resolve(root)) !== path.resolve(os.tmpdir()) ||
@@ -34,19 +36,61 @@ try {
     { recursive: true },
   );
   extractAll(path.join(appDir, 'resources/app.asar'), source);
+  const productionFuses = await getCurrentFuseWire(
+    path.join(appDir, 'Tubevra.exe'),
+  );
+  if (sponsorblock) {
+    // Inspect the untouched production package before replacing its main entry
+    // with the local scenario. Keep packaged preloads and renderer unchanged.
+    for (const file of ['LICENSE', 'THIRD_PARTY_NOTICES.md'])
+      assert.equal(
+        await readFile(path.join(appDir, 'resources', file), 'utf8'),
+        await readFile(file, 'utf8'),
+      );
+    for (const file of ['main.cjs', 'tv-preload.cjs'])
+      assert.match(
+        await readFile(path.join(source, '.vite/build', file), 'utf8'),
+        /sponsorblock/,
+      );
+    const metadata = JSON.parse(
+      await readFile(path.join(source, 'package.json'), 'utf8'),
+    );
+    assert.equal(metadata.main, '.vite/build/main.cjs');
+    for (const fuse of [
+      FuseV1Options.RunAsNode,
+      FuseV1Options.EnableNodeOptionsEnvironmentVariable,
+      FuseV1Options.EnableNodeCliInspectArguments,
+    ])
+      assert.equal(productionFuses[fuse], FuseState.DISABLE);
+    for (const fuse of [
+      FuseV1Options.EnableCookieEncryption,
+      FuseV1Options.EnableEmbeddedAsarIntegrityValidation,
+      FuseV1Options.OnlyLoadAppFromAsar,
+    ])
+      assert.equal(productionFuses[fuse], FuseState.ENABLE);
+    console.log(
+      'Production package: SponsorBlock bundles and distribution notices verified.',
+    );
+  }
   for (const [entry, filename] of [
     [
-      adblock
-        ? 'tests/electron/adblock-main.ts'
-        : 'tests/electron/packaged-hooks-main.ts',
+      sponsorblock
+        ? 'tests/electron/sponsorblock-playback-main.ts'
+        : adblock
+          ? 'tests/electron/adblock-main.ts'
+          : 'tests/electron/packaged-hooks-main.ts',
       'main.cjs',
     ],
     ['src/preload/tv-preload.ts', 'tv-preload.cjs'],
   ]) {
-    if (adblock && filename === 'tv-preload.cjs') continue;
+    if ((adblock || sponsorblock) && filename === 'tv-preload.cjs') continue;
     await build({
       configFile: false,
-      plugins: [extensionBuildPlugin(adblock ? undefined : fixtureCatalog)],
+      plugins: [
+        extensionBuildPlugin(
+          adblock || sponsorblock ? undefined : fixtureCatalog,
+        ),
+      ],
       define: {
         MAIN_WINDOW_VITE_DEV_SERVER_URL: 'undefined',
         MAIN_WINDOW_VITE_NAME: '"main_window"',
@@ -79,6 +123,7 @@ try {
   integrity.bin = new TextEncoder().encode(JSON.stringify(entries)).buffer;
   resources.outputResource(exe);
   await writeFile(exePath, Buffer.from(exe.generate()));
+  assert.deepEqual(await getCurrentFuseWire(exePath), productionFuses);
   const resultPath = path.join(root, 'result.json');
   const profile = path.join(root, 'profile');
   await mkdir(profile);

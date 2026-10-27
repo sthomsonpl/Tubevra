@@ -1,6 +1,8 @@
 import { deadline, releaseLate } from '../lifecycle';
+import { validDiagnostics } from '../diagnostics';
 import type {
   Cleanup,
+  ExtensionDiagnostics,
   PageConfiguration,
   PageExtensionStart,
   PageReport,
@@ -17,7 +19,13 @@ export class PageRuntime {
   private reloadPending = new Set<string>();
   private instances = new Map<
     string,
-    { abort: AbortController; cleanups: Cleanup[]; reload: boolean }
+    {
+      abort: AbortController;
+      cleanups: Cleanup[];
+      reload: boolean;
+      revisions: Set<(revision: number) => void>;
+      diagnostics?: ExtensionDiagnostics;
+    }
   >();
   constructor(
     private documentId: string,
@@ -34,9 +42,18 @@ export class PageRuntime {
       return this.pending;
     this.revision = config.revision;
     // Cancel immediately, even when an asynchronous start is still pending.
-    for (const [id, instance] of this.instances)
+    for (const [id, instance] of this.instances) {
       if (!config.items.some((item) => item.id === id && item.enabled))
         instance.abort.abort();
+      else
+        for (const listener of instance.revisions) {
+          try {
+            listener(config.revision);
+          } catch (cause) {
+            void this.fail(id, cause, instance);
+          }
+        }
+    }
     this.pending = this.pending.then(async () => {
       if (this.closed || config.revision !== this.revision) return;
       for (const item of config.items) {
@@ -50,10 +67,17 @@ export class PageRuntime {
             this.send(config, item.id, 'active', null);
             continue;
           }
-          const instance = {
+          const instance: {
+            abort: AbortController;
+            cleanups: Cleanup[];
+            reload: boolean;
+            revisions: Set<(revision: number) => void>;
+            diagnostics?: ExtensionDiagnostics;
+          } = {
             abort: new AbortController(),
             cleanups: [] as Cleanup[],
             reload: false,
+            revisions: new Set(),
           };
           this.identities.set(item.id, String(++this.sequence));
           this.instances.set(item.id, instance);
@@ -64,6 +88,31 @@ export class PageRuntime {
               throw new Error('Missing page extension implementation.');
             const cleanup = await deadline(
               start({
+                documentId: this.documentId,
+                revision: () => this.revision,
+                onRevision: (listener) => {
+                  if (!instance.abort.signal.aborted)
+                    instance.revisions.add(listener);
+                },
+                reportDiagnostics: (value) => {
+                  if (
+                    this.closed ||
+                    instance.abort.signal.aborted ||
+                    this.instances.get(item.id) !== instance ||
+                    !validDiagnostics(value) ||
+                    JSON.stringify(instance.diagnostics) ===
+                      JSON.stringify(value)
+                  )
+                    return;
+                  instance.diagnostics = { ...value };
+                  if (!installing)
+                    this.send(
+                      { ...config, revision: this.revision },
+                      item.id,
+                      'active',
+                      null,
+                    );
+                },
                 document: this.document,
                 signal: instance.abort.signal,
                 onCleanup: (cleanup) => {
@@ -132,6 +181,9 @@ export class PageRuntime {
   ) {
     if (!this.closed && config.revision === this.revision)
       this.report({
+        ...(this.instances.get(id)?.diagnostics
+          ? { diagnostics: this.instances.get(id)!.diagnostics }
+          : {}),
         layer: 'page',
         instance: this.identities.get(id) ?? '',
         reloadReason: this.reloadPending.has(id)

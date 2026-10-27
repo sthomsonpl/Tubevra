@@ -9,11 +9,14 @@ import type { TubervaExtensions } from '../tuberva-extensions';
 import type { PageConfiguration } from '../types';
 
 import { PAGE_IPC } from '../page/channels';
+import { connections as mainConnections } from './implementations';
+import type { MainExtensionBridge } from './bridge';
 
 export function connectPage(
   ipc: IpcMain,
   contents: WebContents,
   engine: TubervaExtensions,
+  connections: Readonly<Record<string, MainExtensionBridge>> = mainConnections,
 ) {
   let documentId: string | null = null;
   let windowStart = 0;
@@ -69,6 +72,8 @@ export function connectPage(
     try {
       const url = new URL(event.senderFrame.url);
       return (
+        !url.username &&
+        !url.password &&
         url.origin === 'https://www.youtube.com' &&
         (url.pathname === '/tv' || url.pathname.startsWith('/tv/'))
       );
@@ -76,6 +81,14 @@ export function connectPage(
       return false;
     }
   };
+  const bridges = Object.values(connections).map((connect) =>
+    connect({
+      ipc,
+      engine,
+      trusted,
+      currentDocument: () => documentId,
+    }),
+  );
   const configuration = (): PageConfiguration => ({
     document: documentId!,
     revision: engine.snapshot().revision,
@@ -156,16 +169,24 @@ export function connectPage(
   ) => {
     if (mainFrame && !inPlace) {
       documentId = null;
+      for (const bridge of bridges) bridge.invalidate();
       engine.resetPage();
     }
   };
   contents.on('did-start-navigation', invalidate);
+  const ended = () => {
+    documentId = null;
+    for (const bridge of bridges) bridge.invalidate();
+  };
+  contents.on('render-process-gone', ended);
+  contents.on('destroyed', ended);
   return {
     publish() {
       if (documentId && !contents.isDestroyed())
         contents.send(PAGE_IPC.state, configuration());
     },
     dispose() {
+      for (const bridge of bridges) bridge.dispose();
       clearInterval(watchdog);
       waiting.clear();
       documentId = null;
@@ -175,6 +196,8 @@ export function connectPage(
       ipc.removeHandler(PAGE_IPC.ready);
       ipc.removeHandler(PAGE_IPC.report);
       contents.removeListener('did-start-navigation', invalidate);
+      contents.removeListener('render-process-gone', ended);
+      contents.removeListener('destroyed', ended);
     },
   };
 }

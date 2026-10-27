@@ -1,10 +1,20 @@
 import { app, BrowserWindow, dialog, Menu } from 'electron';
 import { UserAgentStore } from './user-agent-store';
 import { createTVWindow } from './tv-window';
+import { GeneralSettingsStore } from './general-settings-store';
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  let general: GeneralSettingsStore;
+  let configurationError: unknown;
+  try {
+    general = GeneralSettingsStore.open(app.getPath('userData'));
+    if (!general.snapshot().hardwareAcceleration)
+      app.disableHardwareAcceleration();
+  } catch (cause) {
+    configurationError = cause;
+  }
   Menu.setApplicationMenu(null);
   app.on('second-instance', () => {
     const window = BrowserWindow.getAllWindows()[0];
@@ -14,6 +24,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     let store: UserAgentStore;
     try {
+      if (configurationError) throw configurationError;
       store = await UserAgentStore.open(app.getPath('userData'));
     } catch (cause) {
       dialog.showErrorBox(
@@ -25,7 +36,7 @@ if (!app.requestSingleInstanceLock()) {
     }
     const startWindow = async () => {
       try {
-        await createTVWindow(store);
+        await createTVWindow(store, general);
       } catch (cause) {
         dialog.showErrorBox(
           'Tubevra could not start',

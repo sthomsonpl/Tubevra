@@ -49,6 +49,29 @@
   box-shadow: 0 0 0 2px #ffffff18;
 }
 
+.settings-page .extension-attribution-link {
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-decoration-color: #ffffff30;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  border-radius: 2px;
+  transition:
+    color 120ms ease,
+    text-decoration-color 120ms ease;
+}
+
+.settings-page .extension-attribution-link:hover,
+.settings-page .extension-attribution-link:focus-visible {
+  color: var(--text-main);
+  text-decoration-color: currentColor;
+}
+
+.settings-page .extension-attribution-link:focus-visible {
+  outline: 2px solid var(--text-main);
+  outline-offset: 3px;
+}
+
 /* Brand */
 .brand {
   display: flex;
@@ -519,6 +542,17 @@
 
 .widget-row + .widget-row {
   border-top: 1px solid var(--border-hairline);
+}
+
+.general-restart {
+  margin-top: auto;
+  flex: none;
+}
+
+.general-restart .row-icon {
+  color: #facc15;
+  background: #facc1512;
+  border-color: #facc1533;
 }
 
 .row-icon,
