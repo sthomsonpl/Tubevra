@@ -48,6 +48,12 @@ No signing secrets are required. macOS Universal contains both Intel and Apple S
 
 Ad-hoc macOS builds retain Hardened Runtime and allow JIT compilation, but disable Library Validation because ad-hoc signatures have no Team ID. The workflow checks these entitlements on the app and its helpers. Remove the Library Validation exception when switching to Developer ID signing.
 
+## Privacy
+
+Tubevra stores your settings and YouTube session in a local profile. The
+[Privacy Policy](PRIVACY.md) explains what stays on your device, what YouTube and
+optional SponsorBlock receive, and how to remove your local data.
+
 ## Thanks
 
 Inspired by TizenTube & TizenTube Cobalt. See [third-party notices](THIRD_PARTY_NOTICES.md).

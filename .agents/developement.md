@@ -7,6 +7,7 @@ Instrukcje dotyczą implementacji, testowania i dokumentowania zmian. Stosuj je 
 - Przed zmianami sprawdź stan repozytorium. Zachowuj istniejące zmiany użytkownika; nie cofaj ich ani nie porządkuj przy okazji zadania.
 - Czytaj dokumentację właściwego obszaru: `docs/core.md`, `docs/ui.md` lub `docs/extensions.md`. Rozbieżności między dokumentacją a kodem zgłaszaj, zamiast zakładać, że opis potwierdza aktualne działanie.
 - Nie formatuj całego repozytorium ani nie poprawiaj niezwiązanych błędów.
+- Wdrożenie lub zmiana rozszerzenia łączącego się z usługą zewnętrzną wymaga krótkiej, zgodnej z kodem aktualizacji `PRIVACY.md` i `PRIVACY_PL.md`: wskaż usługę, cel połączenia, przekazywane dane (w tym adres IP), kiedy połączenia są wykonywane i jak je wyłączyć.
 
 ## Weryfikacja
 

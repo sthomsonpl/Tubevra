@@ -48,6 +48,13 @@ Sekrety do podpisywania nie są wymagane. macOS Universal zawiera pliki dla Inte
 
 Buildy macOS podpisane ad hoc zachowują Hardened Runtime i pozwalają na kompilację JIT, ale wyłączają Library Validation, ponieważ podpis ad hoc nie zawiera Team ID. Workflow sprawdza te uprawnienia w aplikacji i jej procesach pomocniczych. Przy przejściu na podpis Developer ID usuń wyjątek Library Validation.
 
+## Prywatność
+
+Tubevra zapisuje ustawienia i sesję YouTube w lokalnym profilu.
+[Polityka prywatności](PRIVACY_PL.md) wyjaśnia, jakie dane pozostają na urządzeniu,
+co otrzymują YouTube i opcjonalnie SponsorBlock oraz jak usunąć dane lokalne.
+Dokument jest dostępny także [po angielsku](PRIVACY.md).
+
 ## Podziękowania
 
 Inspiracją są TizenTube & TizenTube Cobalt. Więcej w [informacjach o projektach i zależnościach](THIRD_PARTY_NOTICES.md).
