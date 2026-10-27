@@ -1,4 +1,5 @@
 import { deadline, releaseLate } from './lifecycle';
+import { validDiagnostics } from './diagnostics';
 import { validateHookManifest } from './hooks/validation';
 import type {
   Cleanup,
@@ -6,6 +7,7 @@ import type {
   ExtensionsState,
   ExtensionState,
   MainExtensionStart,
+  ExtensionDiagnostics,
 } from './types';
 import { ExtensionStore, parseExtensionCommand } from './main/extension-store';
 import { RequestDispatcher } from './main/request-dispatcher';
@@ -16,9 +18,50 @@ export class TubervaExtensions {
   private items: ExtensionState[];
   private resources = new Map<string, Cleanup[]>();
   private revision = 0;
+  private stateVersion = 0;
   private closed = false;
   private runtimeError: string | null = null;
   private dispatcher: RequestDispatcher;
+  private authorityListeners = new Set<() => void>();
+  private services = new Map<
+    string,
+    { value: unknown; abort: AbortController }
+  >();
+  private mainInstances = new Map<string, AbortController>();
+  private pageDiagnostics = new Map<
+    string,
+    (value: ExtensionDiagnostics) => boolean
+  >();
+
+  // Independent of diagnostic confirmations. The bridge owns document leases.
+  onAuthorityChange(listener: () => void): Cleanup {
+    this.authorityListeners.add(listener);
+    return () => {
+      this.authorityListeners.delete(listener);
+    };
+  }
+  private advanceRevision() {
+    this.revision++;
+    for (const listener of this.authorityListeners) listener();
+  }
+  private publishState() {
+    this.stateVersion++;
+    this.publish();
+  }
+  getService(id: string) {
+    const item = this.items.find((item) => item.id === id);
+    return !this.closed &&
+      item?.enabled &&
+      item.main &&
+      item.page &&
+      item.modes.includes('tv') &&
+      item.status !== 'error' &&
+      !item.error &&
+      !item.reloadRequired &&
+      item.layers.main === 'active'
+      ? (this.services.get(id) ?? null)
+      : null;
+  }
   private constructor(
     private store: ExtensionStore,
     registry: readonly ExtensionMetadata[],
@@ -38,14 +81,14 @@ export class TubervaExtensions {
     this.dispatcher = new RequestDispatcher(source, (id, cause) => {
       const item = this.items.find((item) => item.id === id)!;
       item.status = 'error';
-      this.revision++;
+      this.advanceRevision();
       item.error = String(cause);
-      this.publish();
+      this.publishState();
       void this.enqueue(async () => {
         await this.stop(item);
         item.error = [String(cause), item.error].filter(Boolean).join('\n');
         item.status = 'error';
-        this.publish();
+        this.publishState();
       });
     });
   }
@@ -84,6 +127,7 @@ export class TubervaExtensions {
   snapshot(): ExtensionsState {
     return structuredClone({
       revision: this.revision,
+      stateVersion: this.stateVersion,
       error: this.runtimeError,
       items: this.items,
     });
@@ -95,13 +139,17 @@ export class TubervaExtensions {
       const item = this.items.find((item) => item.id === command.id);
       if (!item || !item.modes.includes('tv'))
         throw new Error('Extension is unavailable in TV mode.');
+      // Preserve a healthy service and its page connection on duplicate enable.
+      // Extensions without a service retain their existing update lifecycle.
+      if (item.enabled === command.enabled && this.getService(item.id))
+        return this.snapshot();
       await this.store.update(command);
-      this.revision++;
+      this.advanceRevision();
       this.confirmations.clear();
       item.enabled = command.enabled;
       await this.stop(item);
       if (!item.error) await this.apply(item);
-      this.publish();
+      this.publishState();
       return this.snapshot();
     });
   }
@@ -111,6 +159,12 @@ export class TubervaExtensions {
     return operation;
   }
   private async stop(item: ExtensionState) {
+    const instance = this.mainInstances.get(item.id);
+    this.mainInstances.delete(item.id);
+    this.services.delete(item.id);
+    this.pageDiagnostics.delete(item.id);
+    delete item.diagnostics;
+    instance?.abort();
     this.dispatcher.remove(item.id);
     const resources = this.resources.get(item.id) ?? [];
     this.resources.delete(item.id);
@@ -143,10 +197,12 @@ export class TubervaExtensions {
         .map((layer) => [layer, 'starting']),
     );
     item.status = 'starting';
-    this.publish();
+    this.publishState();
     const resources: Cleanup[] = [];
     this.resources.set(item.id, resources);
     let accepting = true;
+    const abort = new AbortController();
+    this.mainInstances.set(item.id, abort);
     try {
       if (item.main) {
         const start = this.starts[item.id];
@@ -154,6 +210,47 @@ export class TubervaExtensions {
           throw new Error('Missing main extension implementation.');
         const cleanup = await deadline(
           start({
+            signal: abort.signal,
+            registerService: (value) => {
+              if (
+                !accepting ||
+                this.closed ||
+                abort.signal.aborted ||
+                item.status === 'error' ||
+                value == null ||
+                this.services.has(item.id)
+              )
+                throw Error('Extension service registration rejected.');
+              this.services.set(item.id, { value, abort });
+            },
+            registerPageDiagnostics: (validate) => {
+              if (
+                !accepting ||
+                this.closed ||
+                abort.signal.aborted ||
+                typeof validate !== 'function' ||
+                this.pageDiagnostics.has(item.id)
+              )
+                throw Error('Extension diagnostic registration rejected.');
+              this.pageDiagnostics.set(item.id, validate);
+            },
+            reportDiagnostics: (value) => {
+              if (
+                this.closed ||
+                abort.signal.aborted ||
+                this.mainInstances.get(item.id) !== abort ||
+                item.status === 'error' ||
+                !validDiagnostics(value)
+              )
+                return;
+              item.diagnostics ??= {};
+              if (
+                JSON.stringify(item.diagnostics.main) === JSON.stringify(value)
+              )
+                return;
+              item.diagnostics.main = { ...value };
+              this.publishState();
+            },
             registerRule: (rule) => {
               if (!accepting || item.status === 'error' || this.closed)
                 throw new Error('Extension start context is closed.');
@@ -183,11 +280,11 @@ export class TubervaExtensions {
       await this.stop(item);
       item.error = [String(cause), item.error].filter(Boolean).join('\n');
       item.status = 'error';
-      this.revision++;
+      this.advanceRevision();
     } finally {
       accepting = false;
     }
-    this.publish();
+    this.publishState();
   }
   private confirmations = new Map<string, string>();
   private aggregate(item: ExtensionState) {
@@ -202,10 +299,11 @@ export class TubervaExtensions {
             : 'starting';
   }
   resetPage() {
-    this.revision++;
+    this.advanceRevision();
     this.confirmations.clear();
     this.runtimeError = null;
     for (const item of this.items) {
+      if (item.diagnostics) delete item.diagnostics.page;
       if (!item.page && !item.hooks) continue;
       item.reloadRequired = false;
       item.reloadReason = null;
@@ -214,13 +312,13 @@ export class TubervaExtensions {
           item.layers[layer] = item.enabled ? 'starting' : 'disabled';
       this.aggregate(item);
     }
-    this.publish();
+    this.publishState();
   }
   failRuntime(message: string) {
     return this.enqueue(async () => {
       if (this.closed) return;
       this.runtimeError = message.slice(0, 2000);
-      this.revision++;
+      this.advanceRevision();
       for (const item of this.items)
         if (item.enabled && (item.page || item.hooks)) {
           item.reloadRequired = true;
@@ -228,7 +326,7 @@ export class TubervaExtensions {
           item.error = this.runtimeError;
           item.status = 'error';
         }
-      this.publish();
+      this.publishState();
       for (const item of this.items)
         if (item.enabled && (item.page || item.hooks)) {
           await this.stop(item);
@@ -237,7 +335,7 @@ export class TubervaExtensions {
             .join('\n');
           item.status = 'error';
         }
-      this.publish();
+      this.publishState();
     });
   }
   reportHook(input: unknown) {
@@ -253,12 +351,22 @@ export class TubervaExtensions {
         !input ||
         typeof input !== 'object' ||
         Array.isArray(input) ||
-        Object.keys(input).length !== 8
+        (Object.keys(input).length !== 8 &&
+          !(
+            layer === 'page' &&
+            Object.keys(input).length === 9 &&
+            Object.hasOwn(input, 'diagnostics')
+          ))
       )
         return;
       const value = input as
         | import('./types').HookReport
         | import('./types').PageReport;
+      if (
+        'diagnostics' in value &&
+        (layer !== 'page' || !validDiagnostics(value.diagnostics))
+      )
+        return;
       if (
         value.layer !== layer ||
         value.revision !== this.revision ||
@@ -280,6 +388,14 @@ export class TubervaExtensions {
         (item) => item.id === value.id && item[layer],
       );
       if (!item) return;
+      if ('diagnostics' in value) {
+        const validate = this.pageDiagnostics.get(item.id);
+        try {
+          if (!validate || !validate(value.diagnostics!)) return;
+        } catch {
+          return;
+        }
+      }
       const key = `${value.document}:${item.id}:${layer}:${value.revision}`;
       const previous = this.confirmations.get(key);
       if (previous !== undefined && previous !== value.instance) return;
@@ -289,27 +405,32 @@ export class TubervaExtensions {
         item.reloadReason = value.reloadReason;
       }
       if (item.error || (!item.enabled && value.status === 'active')) return;
+      if ('diagnostics' in value && item.enabled && value.status === 'active') {
+        item.diagnostics ??= {};
+        item.diagnostics.page = { ...value.diagnostics! };
+      }
       if (value.status === 'error') {
         const cause = value.error || 'Extension layer failed.';
         item.error = cause;
         item.status = 'error';
-        this.revision++;
+        this.advanceRevision();
         this.confirmations.clear();
-        this.publish();
+        this.publishState();
         await this.stop(item);
         item.error = [cause, item.error].filter(Boolean).join('\n');
         item.layers[layer] = 'error';
       } else item.layers[layer] = value.status;
       this.aggregate(item);
-      this.publish();
+      this.publishState();
     });
   }
   dispose() {
     this.closed = true;
+    for (const listener of this.authorityListeners) listener();
     return this.enqueue(async () => {
       for (const item of this.items) await this.stop(item);
       this.dispatcher.dispose();
-      this.publish();
+      this.publishState();
     });
   }
 }

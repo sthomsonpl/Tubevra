@@ -8,6 +8,7 @@ const api: TubevraAPI = {
     ipcRenderer.invoke(IPC.setHardwareAcceleration, enabled),
   restartApp: () => ipcRenderer.invoke(IPC.restartApp),
   openProjectGitHub: () => ipcRenderer.invoke(IPC.openProjectGitHub),
+  openSponsorBlock: () => ipcRenderer.invoke(IPC.openSponsorBlock),
   reloadTV: () => ipcRenderer.invoke(IPC.reloadTV),
   getExtensions: () => ipcRenderer.invoke(IPC.getExtensions),
   setExtensionEnabled: (command) =>

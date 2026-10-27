@@ -117,3 +117,34 @@ test('invalid declarations and forbidden hook dependencies fail the build', asyn
     ]),
   );
 });
+
+test('main bridges are derived from catalog modules without importing hooks', async () => {
+  const result = await build({
+    configFile: false,
+    logLevel: 'silent',
+    plugins: [extensionBuildPlugin()],
+    build: {
+      write: false,
+      minify: false,
+      lib: {
+        entry: 'src/extensions/main/implementations.ts',
+        formats: ['cjs'],
+      },
+      rollupOptions: { external: ['electron', /^node:/] },
+    },
+  });
+  const output = (Array.isArray(result) ? result : [result]).flatMap(
+    (item) => item.output,
+  );
+  const module = { exports: {} };
+  vm.runInNewContext(output[0].code, {
+    module,
+    exports: module.exports,
+    require: (name) =>
+      name === 'electron' ? {} : process.getBuiltinModule(name),
+  });
+  assert.deepEqual(Object.keys(module.exports.connections), ['sponsorblock']);
+  assert.deepEqual(Object.keys(module.exports.starts), ['sponsorblock']);
+  assert.equal(typeof module.exports.connections.sponsorblock, 'function');
+  assert.equal(output[0].code.includes('ytInitialPlayerResponse'), false);
+});

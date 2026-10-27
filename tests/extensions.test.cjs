@@ -75,6 +75,15 @@ test('Adblock registration preserves existing preferences and persists explicit 
   assert.equal(item.main, false);
   assert.equal(item.page, false);
   assert.deepEqual(hookManifest, ['adblock']);
+  const sponsor = engine
+    .snapshot()
+    .items.find((item) => item.id === 'sponsorblock');
+  assert.equal(sponsor.enabled, false);
+  assert.equal(sponsor.defaultEnabled, false);
+  assert.deepEqual(sponsor.modes, ['tv']);
+  assert.equal(sponsor.main, true);
+  assert.equal(sponsor.page, true);
+  assert.equal(sponsor.hooks, false);
   await engine.update({ id: 'adblock', enabled: false });
   const reopened = await ExtensionStore.open(dir, extensionRegistry);
   assert.equal(reopened.enabled('adblock'), false);

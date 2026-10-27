@@ -14,7 +14,7 @@ import { extensionRegistry, hookManifest } from '../extensions/registry';
 import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { IPC, PROJECT_GITHUB_URL } from '../shared/api';
+import { IPC, PROJECT_GITHUB_URL, SPONSORBLOCK_URL } from '../shared/api';
 import type { AppState, Result } from '../shared/api';
 import type { UserAgentStore } from './user-agent-store';
 import { GeneralSettingsStore } from './general-settings-store';
@@ -346,6 +346,19 @@ export async function createTVWindow(
       }
     },
   );
+  ipcMain.handle(
+    IPC.openSponsorBlock,
+    async (event, ...args): Promise<Result<null>> => {
+      assertShell(event);
+      if (args.length) return { ok: false, error: 'Unexpected arguments.' };
+      try {
+        await shell.openExternal(SPONSORBLOCK_URL);
+        return { ok: true, value: null };
+      } catch {
+        return { ok: false, error: 'Could not open SponsorBlock.' };
+      }
+    },
+  );
   ipcMain.handle(IPC.getExtensions, (event, ...args) => {
     assertShell(event);
     return args.length
@@ -514,6 +527,7 @@ export async function createTVWindow(
       IPC.setHardwareAcceleration,
       IPC.restartApp,
       IPC.openProjectGitHub,
+      IPC.openSponsorBlock,
       IPC.getExtensions,
       IPC.setExtensionEnabled,
       IPC.reloadTV,

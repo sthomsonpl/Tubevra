@@ -203,7 +203,7 @@ app
       (
         await shell.executeJavaScript('window.tubevra.getExtensions()')
       ).value.items.map((item) => item.id),
-      ['adblock'],
+      ['adblock', 'sponsorblock'],
     );
     await shell.executeJavaScript(
       `document.querySelector('[data-section="user-agents"]').click()`,
@@ -344,6 +344,105 @@ app
     await waitFor(() => requests.length > beforeReload, 'explicit reload');
     await idle();
     await engine.dispose();
+    const {
+      sponsorMainContext,
+    } = require('../../src/extensions/sponsorblock/main.ts');
+    const {
+      sponsorAvailability,
+    } = require('../../src/extensions/sponsorblock/diagnostics.ts');
+    let reportAvailability;
+    let broadcastAvailability = () => {};
+    const statusEngine = await TubervaExtensions.open(
+      path.join(profile, 'sponsor-status-ui-test'),
+      [
+        {
+          id: 'sponsorblock',
+          name: 'SponsorBlock',
+          description: 'Test only',
+          modes: ['tv'],
+          main: true,
+          page: true,
+          defaultEnabled: true,
+        },
+      ],
+      { onBeforeRequest() {} },
+      {
+        sponsorblock: (context) => {
+          const sponsor = sponsorMainContext(context);
+          sponsor.registerSponsorSegments(() => ({ kind: 'empty' }));
+          reportAvailability = sponsor.reportSponsorAvailability;
+          return () => {};
+        },
+      },
+      () => broadcastAvailability(),
+    );
+    while (statusEngine.snapshot().revision <= engine.snapshot().revision)
+      statusEngine.resetPage();
+    broadcastAvailability = () =>
+      shell.send('tubevra:extensions:state-changed', statusEngine.snapshot());
+    await statusEngine.reportPage({
+      layer: 'page',
+      document: 'ui-fixture',
+      instance: '1',
+      reloadReason: null,
+      id: 'sponsorblock',
+      revision: statusEngine.snapshot().revision,
+      status: 'active',
+      error: null,
+    });
+    broadcastAvailability();
+    await waitFor(
+      () =>
+        shell.executeJavaScript(`
+        document.querySelector('#panel-extensions .extension-attribution-link') &&
+        !document.querySelector('#panel-extensions [role="status"]')
+      `),
+      'idle SponsorBlock has no status row',
+    );
+    await shell.executeJavaScript(
+      'document.querySelector("#panel-extensions input").focus()',
+    );
+    const oldSnapshot = statusEngine.snapshot();
+    const revision = oldSnapshot.revision;
+    reportAvailability('network-error');
+    await waitFor(
+      async () => (await panelText()).includes('Network error'),
+      'visible service failure',
+    );
+    assert.equal(statusEngine.snapshot().revision, revision);
+    assert.equal(statusEngine.snapshot().items[0].status, 'active');
+    assert.equal(statusEngine.snapshot().items[0].error, null);
+    assert.equal(
+      await shell.executeJavaScript(
+        'document.activeElement?.getAttribute("aria-label")',
+      ),
+      'Enable SponsorBlock',
+    );
+    shell.send('tubevra:extensions:state-changed', oldSnapshot);
+    await idle();
+    assert.ok((await panelText()).includes('Network error'));
+    for (const [kind, label] of [
+      ['service-error', 'SponsorBlock unavailable'],
+      ['timeout', 'Request timed out'],
+      ['invalid-data', 'Invalid segment data'],
+      ['rate-limited', 'Request limit reached'],
+      ['busy', 'Temporarily busy'],
+      ['available', 'Active'],
+    ]) {
+      reportAvailability(kind);
+      await waitFor(
+        async () => (await panelText()).includes(label),
+        `service status ${kind}`,
+      );
+    }
+    await statusEngine.update({ id: 'sponsorblock', enabled: false });
+    await waitFor(
+      async () => (await panelText()).includes('Disabled'),
+      'disabled service status cleared',
+    );
+    reportAvailability('network-error');
+    assert.equal(sponsorAvailability(statusEngine.snapshot().items[0]), null);
+    await statusEngine.dispose();
     ipcMain.removeHandler('tubevra:extensions:set-enabled');
     ipcMain.handle('tubevra:extensions:set-enabled', setExtension);
     shell.send('tubevra:extensions:state-changed', (await state()).extensions);
@@ -352,6 +451,9 @@ app
     );
     checks.push(
       'Extensions test engine: toggles, runtime status, failure, disable and explicit reload',
+    );
+    checks.push(
+      'SponsorBlock availability, stale state ordering and focus preservation',
     );
     await shell.executeJavaScript('window.tubevra.setSettingsOpen(false)');
     const dockView = win.contentView.children.find(

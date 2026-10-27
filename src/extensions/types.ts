@@ -1,4 +1,5 @@
 export type ExtensionStatus = 'disabled' | 'starting' | 'active' | 'error';
+export type ExtensionDiagnostics = Readonly<Record<string, string>>;
 export interface ExtensionMetadata {
   id: string;
   name: string;
@@ -21,9 +22,12 @@ export interface ExtensionState extends ExtensionMetadata {
   >;
   status: ExtensionStatus;
   error: string | null;
+  /** Layer-owned diagnostic data never grants service authority. */
+  diagnostics?: { main?: ExtensionDiagnostics; page?: ExtensionDiagnostics };
 }
 export interface ExtensionsState {
   revision: number;
+  stateVersion: number;
   error: string | null;
   items: ExtensionState[];
 }
@@ -39,21 +43,31 @@ export interface RequestInfo {
 export type RequestRule = (request: Readonly<RequestInfo>) => 'allow' | 'block';
 export type Cleanup = () => void | Promise<void>;
 export interface MainExtensionContext {
+  signal: AbortSignal;
   registerRule(rule: RequestRule): void;
   onCleanup(cleanup: Cleanup): void;
+  /** Internal compiled-module service; never exposed as a renderer API. */
+  registerService(service: unknown): void;
+  registerPageDiagnostics(
+    validate: (value: ExtensionDiagnostics) => boolean,
+  ): void;
+  reportDiagnostics(value: ExtensionDiagnostics): void;
 }
 export type MainExtensionStart = (
   context: MainExtensionContext,
 ) => Cleanup | Promise<Cleanup>;
-// The document runtime will implement this contract in step 2.
 export interface PageExtensionContext {
   document: Document;
+  documentId: string;
+  revision(): number;
+  onRevision(listener: (revision: number) => void): void;
   signal: AbortSignal;
   onCleanup(cleanup: Cleanup): void;
   guard<T extends unknown[]>(
     callback: (...args: T) => unknown,
   ): (...args: T) => void;
   requireReload(): void;
+  reportDiagnostics(value: ExtensionDiagnostics): void;
 }
 export type PageExtensionStart = (
   context: PageExtensionContext,
@@ -66,6 +80,7 @@ export interface PageConfiguration {
   hooks?: { id: string; enabled: boolean }[];
 }
 export interface PageReport {
+  diagnostics?: ExtensionDiagnostics;
   layer: 'page';
   instance: string;
   reloadReason: string | null;

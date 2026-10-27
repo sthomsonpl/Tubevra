@@ -1,5 +1,25 @@
 # Third-party notices
 
+## SponsorBlock data
+
+Tubevra uses SponsorBlock data from [SponsorBlock](https://sponsor.ajay.app/),
+created by Ajay Ramachandran and the contributing community. The API and database
+are subject to [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+and the author's [database and API conditions](https://github.com/ajayyy/SponsorBlock/wiki/Database-and-API-License).
+See the author's [attribution template](https://gist.github.com/ajayyy/4b27dfc66e33941a45aeaadccb51de71),
+[privacy policy](https://gist.github.com/ajayyy/aa9f8ded2b573d4f73a3ffa0ef74f796)
+and [service terms](https://gist.github.com/ajayyy/9e8100f069348e0bc062641f34d6af12).
+
+The Tubevra integration is independently authored code under GPL-3.0-only;
+no SponsorBlock, TizenTube or other client implementation has been copied.
+The data license is separate from Tubevra's code license. Tubevra is a free,
+noncommercial project. It requests sponsor/skip ranges for individual YouTube
+videos from the official API using a locally computed four-character SHA-256
+prefix and exact local matching. No complete database copy is bundled.
+Ranges are filtered for playback compatibility and overlapping ranges are
+combined locally in memory; Tubevra does not publish a modified database.
+Cached segment data is temporary and is not saved as viewing history on disk.
+
 ## Inspiration
 
 TizenTube & TizenTube Cobalt inspired Tubevra. No code or modules from these projects are currently integrated.

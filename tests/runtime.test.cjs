@@ -129,6 +129,8 @@ test('runtime IPC rejects foreign senders, frames, URLs, documents and invalid a
   let reports = 0,
     resets = 0;
   const engine = {
+    onAuthorityChange: () => () => {},
+    getService: () => null,
     snapshot: () => ({ revision: 0, items: [] }),
     reportPage: () => reports++,
     resetPage: () => resets++,
@@ -235,6 +237,8 @@ test('bridge watchdog reports missing confirmation and bounds diagnostic ingress
   });
   const reports = [];
   const engine = {
+    onAuthorityChange: () => () => {},
+    getService: () => null,
     snapshot: () => ({
       revision: 1,
       items: [
