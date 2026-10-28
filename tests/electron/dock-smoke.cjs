@@ -24,8 +24,11 @@ require.extensions['.ts'] = (module, filename) => {
   );
 };
 const {
-  connectToolbarAutoHide,
+  createToolbarAutoHide,
 } = require('../../src/main/toolbar-auto-hide.ts');
+const {
+  connectOverlayAnimation,
+} = require('../../src/main/overlay-animation.ts');
 const { TOOLBAR_STYLE } = require('../../src/main/toolbar-style.ts');
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function waitFor(predicate, description) {
@@ -70,15 +73,62 @@ app
     win.contentView.addChildView(toolbar);
     const errors = [];
     let restores = 0;
-    const dock = connectToolbarAutoHide(
+    let refresh = () => {};
+    const policy = createToolbarAutoHide(
       win,
       toolbar,
       () => {
         restores++;
         win.webContents.focus();
       },
+      () => refresh(),
+    );
+    policy.layout();
+    const animation = connectOverlayAnimation(
+      win,
+      [
+        {
+          view: toolbar,
+          captureFrame: () => toolbar.webContents.capturePage(),
+          initiallyVisible: true,
+          requireFrameBeforeMotion: true,
+          onReady: policy.onReady,
+          beforeHide: policy.beforeHide,
+        },
+      ],
+      (info) => [
+        {
+          visible:
+            !info.blocked &&
+            policy.request(
+              info.now,
+              info.pointer,
+              info.shown[0],
+              info.requested[0],
+              false,
+              info.failed,
+            ),
+          allowed: true,
+          version: policy.version(),
+        },
+      ],
       (message) => errors.push(message),
     );
+    refresh = animation.refresh;
+    const dock = {
+      layout() {
+        policy.layout();
+        animation.layout();
+      },
+      setState(state) {
+        policy.setPinned(state.pinned);
+        animation.setSuppressed(state.suppressed);
+      },
+      dispose() {
+        animation.dispose();
+        policy.dispose();
+      },
+    };
     dock.setState({ pinned: true, suppressed: false });
     win.contentView.on('bounds-changed', dock.layout);
     const group = win.contentView.children.find(

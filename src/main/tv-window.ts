@@ -20,7 +20,8 @@ import type { UserAgentStore } from './user-agent-store';
 import { GeneralSettingsStore } from './general-settings-store';
 import { selectTVDisplay } from './tv-display';
 import { connectTVDisplay } from './tv-display-bridge';
-import { connectToolbarAutoHide } from './toolbar-auto-hide';
+import { createToolbarAutoHide } from './toolbar-auto-hide';
+import { connectOverlayAnimation } from './overlay-animation';
 import { TOOLBAR_STYLE } from './toolbar-style';
 
 const TV_HOME = 'https://www.youtube.com/tv';
@@ -149,19 +150,49 @@ export async function createTVWindow(
       }
     });
   }
-  const dock = connectToolbarAutoHide(
+  let refreshOverlays = () => {};
+  const dock = createToolbarAutoHide(
     mainWindow,
     toolbar,
     () => {
       if (settingsOpen || error || loading) mainWindow.webContents.focus();
       else contents.focus();
     },
+    () => refreshOverlays(),
+  );
+  const overlays = connectOverlayAnimation(
+    mainWindow,
+    [
+      {
+        view: toolbar,
+        captureFrame: () => toolbar.webContents.capturePage(),
+        initiallyVisible: true,
+        requireFrameBeforeMotion: true,
+        onReady: dock.onReady,
+        beforeHide: dock.beforeHide,
+      },
+    ],
+    (frame) => {
+      const visible =
+        !frame.blocked &&
+        dock.request(
+          frame.now,
+          frame.pointer,
+          frame.shown[0],
+          frame.requested[0],
+          false,
+          frame.failed,
+        );
+      return [{ visible, allowed: true, version: dock.version() }];
+    },
     (message) => reportError(message),
   );
+  refreshOverlays = overlays.refresh;
   const resize = () => {
     const { width, height } = mainWindow.contentView.getBounds();
     youtube.setBounds({ x: 0, y: 0, width, height });
     dock.layout();
+    overlays.layout();
   };
   resize();
   // The root view also changes when the native menu is first laid out. Window
@@ -195,10 +226,8 @@ export async function createTVWindow(
     // Extension errors are separate from YouTube load errors.
     if (mainWindow.isDestroyed()) return;
     youtube.setVisible(!settingsOpen && !error && !loading);
-    dock.setState({
-      pinned: settingsOpen || !!error || loading,
-      suppressed: playbackFullscreen,
-    });
+    dock.setPinned(settingsOpen || !!error || loading);
+    overlays.setSuppressed(playbackFullscreen);
   };
   const pageBridge = connectPage(ipcMain, contents, extensions);
   notifyExtensions = () => {
@@ -578,6 +607,7 @@ export async function createTVWindow(
   mainWindow.webContents.session.setPermissionCheckHandler(() => false);
 
   mainWindow.on('closed', () => {
+    overlays.dispose();
     dock.dispose();
     displayBridge.dispose();
     pageBridge.dispose();

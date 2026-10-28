@@ -131,3 +131,15 @@ production windows retain their existing behaviour. Playback fullscreen and
 settings are exercised through the dock controller's state, without the complete
 application or IPC. This is not OS mouse hit testing, a distribution-package test
 or live YouTube verification. macOS, Linux and physical IME remain unverified.
+
+## Dock animation ownership
+
+toolbar-auto-hide.ts owns dock visibility, focus and geometry. overlay-animation.ts
+owns raster frames, native glass, frame versions, one animation clock and cursor
+monitor. tv-window.ts connects them without extension dependencies or IPC/preload
+changes. The coordinator supports multiple participants.
+
+Motion replaces native-layer animation with a shared 240 ms easing curve and a
+16 ms main-process loop; improved performance under load is not claimed.
+The isolated Electron dock test covers the scenarios listed above using simulated
+cursor coordinates; the same platform and verification limitations apply.
