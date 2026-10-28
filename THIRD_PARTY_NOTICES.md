@@ -32,6 +32,16 @@ Third-party components retain their own licenses. Required license texts, copyri
 
 ### Windows installer tooling
 
+`@electron/packager` 20.3.0 from
+[Electron Packager](https://github.com/electron/packager/tree/v20.3.0) is licensed
+under BSD-2-Clause, copyright (c) 2015 Max Ogden and other contributors.
+`build/patch-packager.mjs`, run by npm's `postinstall`, modifies the installed
+`@electron/packager/dist/resedit.js` parser to exclude SemVer prerelease and build
+metadata from numeric Windows version fields. Full version strings and the
+application's `package.json` version are preserved. The patch checks the tool
+version and expected parser text, and must be reviewed when upgrading Packager.
+The upstream license is retained at `node_modules/@electron/packager/LICENSE`.
+
 The Windows installer uses `app-builder-lib` 26.15.3 from
 [electron-builder](https://github.com/electron-userland/electron-builder), licensed
 under MIT, and its NSIS installer tooling. `@electron-forge/maker-base` 8.0.1 is

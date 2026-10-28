@@ -9,6 +9,7 @@
   "license": "GPL-3.0-only",
   "main": ".vite/build/main.cjs",
   "scripts": {
+    "postinstall": "node build/patch-packager.mjs",
     "test:ryd": "node --test tests/ryd.test.cjs tests/toolbar-motion.test.cjs",
     "test:ryd:packaged": "node tests/packaged-hooks.mjs --ryd",
     "test:ryd:electron": "node tests/build-extension.mjs ryd && node tests/electron/run.cjs ryd-smoke",
