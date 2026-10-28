@@ -7,4 +7,4 @@
 
 
 ### Fixed
-
+- Fixed Tubevra appearing as “Unknown app” in Windows media controls.

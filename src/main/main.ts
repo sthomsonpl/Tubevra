@@ -3,6 +3,10 @@ import { UserAgentStore } from './user-agent-store';
 import { createTVWindow } from './tv-window';
 import { GeneralSettingsStore } from './general-settings-store';
 
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.sthomsonpl.tubevra');
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
