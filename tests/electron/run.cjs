@@ -6,10 +6,10 @@ const { spawnSync } = require('node:child_process');
 const task = process.argv[2];
 if (
   ![
+    'ryd-smoke',
     'adblock-smoke',
     'ui-smoke',
     'hardware-smoke',
-    'glass-probe',
     'dock-smoke',
     'live-smoke',
     'runtime-smoke',
@@ -33,6 +33,8 @@ if (
 const env = { ...process.env, TUBEVRA_TEST_PROFILE: profile };
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.NODE_TLS_REJECT_UNAUTHORIZED;
+const rydResult = path.resolve('out/verification/ryd/result.json');
+if (task === 'ryd-smoke') fs.rmSync(rydResult, { force: true });
 const adblockResult = path.resolve('out/verification/adblock/result.json');
 if (task === 'adblock-smoke') fs.rmSync(adblockResult, { force: true });
 try {
@@ -63,11 +65,21 @@ try {
   } else {
     const result = spawnSync(
       require('electron'),
-      [path.join(__dirname, `${task}.cjs`)],
+      [
+        task === 'ryd-smoke'
+          ? path.resolve(__dirname, '../../out/verification/ryd/build/main.cjs')
+          : path.join(__dirname, `${task}.cjs`),
+      ],
       { env, stdio: 'inherit', timeout: 90000 },
     );
     if (result.error) console.error(result.error.message);
     process.exitCode = result.status ?? 1;
+    if (
+      task === 'ryd-smoke' &&
+      (!fs.existsSync(rydResult) ||
+        JSON.parse(fs.readFileSync(rydResult, 'utf8')).passed !== true)
+    )
+      throw Error('RYD test did not complete its assertions.');
     if (task === 'adblock-smoke') {
       if (!fs.existsSync(adblockResult))
         throw new Error('Adblock Electron test did not produce a result.');

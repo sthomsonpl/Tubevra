@@ -51,13 +51,14 @@ rozszerzenia zatrzymuje dalsze żądania.
 ## Diagnostyka i odnośniki zewnętrzne
 
 Tubevra nie ma wbudowanej analityki, automatycznego wysyłania raportów awarii ani
-sprawdzania aktualizacji. Nie dotyczy to danych zbieranych przez YouTube lub
-SponsorBlock. Błędy są wyświetlane lokalnie i mogą trafiać do konsoli.
+sprawdzania aktualizacji. Nie dotyczy to danych zbieranych przez YouTube,
+SponsorBlock lub Return YouTube Dislike. Błędy są wyświetlane lokalnie i mogą trafiać do konsoli.
 Electron/Chromium lub system operacyjny mogą również zapisywać lokalne dane
 diagnostyczne. Przed udostępnieniem logów sprawdź ich zawartość — mogą zawierać
 ścieżki plików i szczegóły techniczne.
 
-Odnośniki do GitHuba i SponsorBlock otwierają się w domyślnej przeglądarce
+Odnośniki do GitHuba, Return YouTube Dislike i SponsorBlock otwierają się
+w domyślnej przeglądarce
 i korzystają z jej profilu oraz zasad prywatności odwiedzanej strony.
 
 ## Usuwanie danych
@@ -82,7 +83,7 @@ w [informacjach Komisji Europejskiej](https://commission.europa.eu/law/law-topic
 
 Tubevra zarządza danymi lokalnymi i połączeniami opisanymi powyżej. Jej autor
 odpowiada za własne operacje przetwarzania w zakresie wynikającym z obowiązującego
-prawa. Google/YouTube i SponsorBlock odpowiadają za przetwarzanie, o którego celach
+prawa. Google/YouTube, SponsorBlock i Return YouTube Dislike odpowiadają za przetwarzanie, o którego celach
 i sposobach decydują w swoich usługach. Wnioski dotyczące tego przetwarzania kieruj
 do odpowiednich administratorów danych, korzystając z kanałów kontaktu w ich
 politykach prywatności.
@@ -94,3 +95,18 @@ usługi zewnętrzne.
 Pytania o Tubevrę możesz zgłaszać
 w [repozytorium projektu](https://github.com/sthomsonpl/Tubevra); nie publikuj
 cookies, tokenów ani danych osobowych.
+
+## Return YouTube Dislike
+
+Rozszerzenie jest domyślnie wyłączone. Po włączeniu rozpoznaje potwierdzony film w YouTube TV i pobiera oceny również przy schowanym docku.
+Wywołana usługa wysyła pełne ID filmu do returnyoutubedislikeapi.com, aby pobrać
+szacunkowe liczby Like/Dislike. Usługodawca otrzymuje adres IP i metadane żądania.
+Połączenia korzystają z osobnej nietrwałej sesji bez cookies YouTube i danych konta.
+Nie wysyłamy głosów. Wyniki pozostają w RAM i znikają po wyłączeniu lub zamknięciu
+aplikacji. Tylko znaczniki czasu limitów pozostają przez wyłączenie i ponowne
+włączenie w obrębie procesu. Wyłączenie rozszerzenia zatrzymuje żądania.
+Zobacz [informacje o usługodawcy](THIRD_PARTY_NOTICES.md).
+
+Lokalny panel ocen pokazuje istniejący wynik RYD razem z dockiem oraz przez krótki
+czas po potwierdzonej zmianie filmu.
+Pokazywanie i ukrywanie panelu nie powoduje dodatkowych żądań RYD ani wysyłania jego zawartości.

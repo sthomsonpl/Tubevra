@@ -11,6 +11,8 @@ Projekt na wczesnym etapie rozwoju.
 - **Adblock** — blokuje reklamy w YouTube TV. Reklamy w Shorts nie są jeszcze obsługiwane.
 - **SponsorBlock** — automatycznie pomija segmenty sponsorowane w YouTube TV; domyślnie wyłączony. Uses SponsorBlock data from [https://sponsor.ajay.app/](https://sponsor.ajay.app/).
 
+- **Return YouTube Dislike** — szacunkowe liczby Like/Dislike w lokalnym panelu TV; domyślnie wyłączony. [Źródło danych](https://returnyoutubedislike.com/).
+
 ## Uruchamianie
 
 Potrzebujesz Node.js 22.13.0 lub nowszego i npm. W katalogu projektu:
@@ -52,7 +54,7 @@ Buildy macOS podpisane ad hoc zachowują Hardened Runtime i pozwalają na kompil
 
 Tubevra zapisuje ustawienia i sesję YouTube w lokalnym profilu.
 [Polityka prywatności](PRIVACY_PL.md) wyjaśnia, jakie dane pozostają na urządzeniu,
-co otrzymują YouTube i opcjonalnie SponsorBlock oraz jak usunąć dane lokalne.
+co otrzymują YouTube i opcjonalnie SponsorBlock i Return YouTube Dislike oraz jak usunąć dane lokalne.
 Dokument jest dostępny także [po angielsku](PRIVACY.md).
 
 ## Podziękowania

@@ -333,7 +333,7 @@ app
       (
         await shell.executeJavaScript('window.tubevra.getExtensions()')
       ).value.items.map((item) => item.id),
-      ['adblock', 'sponsorblock'],
+      ['adblock', 'sponsorblock', 'return-youtube-dislike'],
     );
     await shell.executeJavaScript(
       `document.querySelector('[data-section="user-agents"]').click()`,
@@ -525,7 +525,7 @@ app
       () =>
         shell.executeJavaScript(`
         document.querySelector('#panel-extensions .extension-attribution-link') &&
-        !document.querySelector('#panel-extensions [role="status"]')
+        !document.querySelector('#panel-extensions .widget-row:has([data-extension-id="sponsorblock"]) [role="status"]')
       `),
       'idle SponsorBlock has no status row',
     );

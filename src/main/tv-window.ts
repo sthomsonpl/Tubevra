@@ -14,7 +14,12 @@ import { extensionRegistry, hookManifest } from '../extensions/registry';
 import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { IPC, PROJECT_GITHUB_URL, SPONSORBLOCK_URL } from '../shared/api';
+import {
+  IPC,
+  PROJECT_GITHUB_URL,
+  SPONSORBLOCK_URL,
+  RYD_URL,
+} from '../shared/api';
 import type { AppState, Result } from '../shared/api';
 import type { UserAgentStore } from './user-agent-store';
 import { GeneralSettingsStore } from './general-settings-store';
@@ -23,6 +28,7 @@ import { connectTVDisplay } from './tv-display-bridge';
 import { createToolbarAutoHide } from './toolbar-auto-hide';
 import { connectOverlayAnimation } from './overlay-animation';
 import { TOOLBAR_STYLE } from './toolbar-style';
+import { createRatingsPanel } from './ratings-panel';
 
 const TV_HOME = 'https://www.youtube.com/tv';
 
@@ -127,10 +133,18 @@ export async function createTVWindow(
   toolbar.setBorderRadius(TOOLBAR_STYLE.borderRadius);
   toolbar.setBackgroundBlur(TOOLBAR_STYLE.backgroundBlur);
   mainWindow.contentView.addChildView(toolbar);
+  let updateRatings = () => {};
+  const ratings = createRatingsPanel(
+    mainWindow,
+    shellURL + '#ratings',
+    extensions,
+    () => updateRatings(),
+  );
   for (const surface of [
     mainWindow.webContents,
     contents,
     toolbar.webContents,
+    ratings.view.webContents,
   ]) {
     surface.on('before-input-event', (event, input) => {
       if (
@@ -171,6 +185,11 @@ export async function createTVWindow(
         onReady: dock.onReady,
         beforeHide: dock.beforeHide,
       },
+      {
+        view: ratings.view,
+        captureFrame: ratings.captureFrame,
+        clearOnVersionChange: true,
+      },
     ],
     (frame) => {
       const visible =
@@ -180,10 +199,18 @@ export async function createTVWindow(
           frame.pointer,
           frame.shown[0],
           frame.requested[0],
-          false,
+          frame.hovered[1],
           frame.failed,
         );
-      return [{ visible, allowed: true, version: dock.version() }];
+      return [
+        { visible, allowed: true, version: dock.version() },
+        ratings.presentation(
+          frame.now,
+          visible,
+          frame.hovered[1],
+          frame.blocked,
+        ),
+      ];
     },
     (message) => reportError(message),
   );
@@ -192,7 +219,9 @@ export async function createTVWindow(
     const { width, height } = mainWindow.contentView.getBounds();
     youtube.setBounds({ x: 0, y: 0, width, height });
     dock.layout();
+    ratings.layout(toolbar.getBounds());
     overlays.layout();
+    updateRatings();
   };
   resize();
   // The root view also changes when the native menu is first laid out. Window
@@ -203,6 +232,34 @@ export async function createTVWindow(
   let playbackFullscreen = false;
   let settingsOpen = false;
   let loading = true;
+  updateRatings = () => {
+    if (mainWindow.isDestroyed()) return;
+    const allowed =
+      !settingsOpen &&
+      !error &&
+      !loading &&
+      !playbackFullscreen &&
+      mainWindow.isVisible() &&
+      !mainWindow.isMinimized();
+    ratings.setAllowed(allowed);
+    overlays.refresh();
+  };
+  ratings.view.webContents.on('focus', () => {
+    if (mainWindow.isFocused() && !settingsOpen && !loading && !error)
+      contents.focus();
+  });
+  ratings.view.webContents.on('before-mouse-event', (event, input) => {
+    if (
+      input.type === 'mouseDown' &&
+      input.button === 'right' &&
+      mainWindow.isFocused() &&
+      !settingsOpen
+    ) {
+      event.preventDefault();
+      contents.send(IPC.requestTVBack);
+    }
+  });
+  ratings.refresh();
   const state = (): AppState => ({
     version: app.getVersion(),
     general: general.snapshot(),
@@ -226,11 +283,13 @@ export async function createTVWindow(
     // Extension errors are separate from YouTube load errors.
     if (mainWindow.isDestroyed()) return;
     youtube.setVisible(!settingsOpen && !error && !loading);
+    updateRatings();
     dock.setPinned(settingsOpen || !!error || loading);
     overlays.setSuppressed(playbackFullscreen);
   };
   const pageBridge = connectPage(ipcMain, contents, extensions);
   notifyExtensions = () => {
+    ratings.refresh();
     publish();
     if (!mainWindow.isDestroyed())
       mainWindow.webContents.send(
@@ -450,6 +509,19 @@ export async function createTVWindow(
       }
     },
   );
+  ipcMain.handle(
+    IPC.openReturnYouTubeDislike,
+    async (event, ...args): Promise<Result<null>> => {
+      assertShell(event);
+      if (args.length) return { ok: false, error: 'Unexpected arguments.' };
+      try {
+        await shell.openExternal(RYD_URL);
+        return { ok: true, value: null };
+      } catch {
+        return { ok: false, error: 'Could not open Return YouTube Dislike.' };
+      }
+    },
+  );
   ipcMain.handle(IPC.getExtensions, (event, ...args) => {
     assertShell(event);
     return args.length
@@ -609,6 +681,7 @@ export async function createTVWindow(
   mainWindow.on('closed', () => {
     overlays.dispose();
     dock.dispose();
+    ratings.dispose();
     displayBridge.dispose();
     pageBridge.dispose();
     void extensions
@@ -621,6 +694,7 @@ export async function createTVWindow(
       IPC.restartApp,
       IPC.openProjectGitHub,
       IPC.openSponsorBlock,
+      IPC.openReturnYouTubeDislike,
       IPC.getExtensions,
       IPC.setExtensionEnabled,
       IPC.reloadTV,
@@ -636,6 +710,7 @@ export async function createTVWindow(
   });
   await Promise.all([
     mainWindow.loadURL(shellURL),
+    ratings.load(),
     toolbar.webContents.loadURL(toolbarURL),
   ]);
   const startup = pending.then(() => loadTV(TV_HOME));

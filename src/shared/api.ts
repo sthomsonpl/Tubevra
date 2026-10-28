@@ -55,6 +55,7 @@ export interface TubevraAPI extends ExtensionsAPI {
   restartApp(): Promise<Result<AppState>>;
   openProjectGitHub(): Promise<Result<null>>;
   openSponsorBlock(): Promise<Result<null>>;
+  openReturnYouTubeDislike(): Promise<Result<null>>;
   reloadTV(): Promise<Result<AppState>>;
   getState(): Promise<Result<AppState>>;
   updateUserAgents(command: UserAgentCommand): Promise<Result<AppState>>;
@@ -69,6 +70,7 @@ export const IPC = Object.freeze({
   restartApp: 'tubevra:restart-app',
   openProjectGitHub: 'tubevra:open-project-github',
   openSponsorBlock: 'tubevra:open-sponsorblock',
+  openReturnYouTubeDislike: 'tubevra:open-return-youtube-dislike',
   getState: 'tubevra:get-state',
   reloadTV: 'tubevra:reload-tv',
   updateUserAgents: 'tubevra:update-user-agents',
@@ -84,3 +86,4 @@ export const IPC = Object.freeze({
 
 export const PROJECT_GITHUB_URL = 'https://github.com/sthomsonpl/Tubevra';
 export const SPONSORBLOCK_URL = 'https://sponsor.ajay.app/';
+export const RYD_URL = 'https://github.com/Anarios/return-youtube-dislike';

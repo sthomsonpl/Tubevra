@@ -1,7 +1,5 @@
 # TubervaExtensions
 
-
-
 ## Adding an extension
 
 1. Create a directory under src/extensions/, for example adblock/.
@@ -39,3 +37,23 @@ Toggling never reloads the document automatically.
 Test modules live in tests/fixtures/extensions/ and use the same build mechanism
 with a separate catalog. Run npm run test:extensions, npm run test:runtime and
 the Electron integration scripts to verify changes.
+
+## Return YouTube Dislike
+
+Disabled by default and available in TV mode. The adapter confirms the watch route
+against player IDs, excludes ads and inline previews, and detects autoplay.
+The main process fetches estimated likes and dislikes from the official API using
+an isolated session, bounded RAM cache and rate limits. No votes are sent.
+
+A private document/revision/instance protocol binds each video. Navigation,
+renderer loss and disabling cancel pending work and clear the panel. Late results
+cannot replace the current video's ratings. Each generation permits at most two
+retries for transient errors, respecting cache and server cooldowns.
+
+The local panel accompanies the dock and briefly appears after a video change.
+Revealing it does not initiate HTTP. See [UI](ui.md), [privacy](../PRIVACY.md)
+and [attribution](../THIRD_PARTY_NOTICES.md).
+
+Run npm run test:ryd, npm run test:ryd:electron and, after packaging,
+npm run test:ryd:packaged (Windows x64). Fixture tests do not verify live YouTube
+compatibility or physical mouse/IME interactions.

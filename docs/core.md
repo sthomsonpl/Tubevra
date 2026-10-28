@@ -51,12 +51,7 @@ view's main frame at its TV URL, requests native Escape key-down/key-up events.
 The local toolbar uses the same document-side editing guard. No ordinary
 keyboard shortcuts, Backspace mapping or browser-history fallback are installed.
 
-On 2026-10-23 the public [YouTube TV](https://www.youtube.com/tv) document reported
-client `TVHTML5`, version `7.20261021.13.00`. Inspection of its public Kabuki
-JavaScript (`kabuki.base_cr.en_US.HRMII3oYTao.es5.O`, main module) confirmed that
-the document's keydown handler maps key code 27 (Escape) to the application's
-`HISTORY_BACK` signal. This was source inspection, not a passed interaction test.
-No YouTube or third-party project source was copied into Tubevra.
+TV Back uses native Escape events dispatched to the YouTube view.
 
 Both renderers use `contextIsolation`, sandbox, `webSecurity` and disabled Node
 integration. The YouTube preload exposes no application bridge. Settings IPC
@@ -64,7 +59,7 @@ requires the local shell's exact WebContents, main frame and URL, and validates
 payloads. Remote top-level navigation is restricted to
 `https://www.youtube.com/tv` and its subpaths. New windows and other permissions
 are denied; fullscreen is allowed for the TV view. External login windows and
-non-TV top-level navigation are not supported at this stage and produce a visible
+non-TV top-level navigation are not supported and produce a visible
 message. These limits must be revisited explicitly if a real flow requires them.
 
 ## Window fullscreen
@@ -90,9 +85,3 @@ atomic replacement and recovery. Run `npm run typecheck` and `npm run test:core`
 Tests use disposable directories under the OS temporary directory, never the
 user's application data. A sandbox that forbids renaming temporary files can
 prevent the tests from running; it must not be worked around in application code.
-
-The UI stage added packaged integration tests against a local TV fixture,
-including UA reloads, native right-click, editable/simulated IME guards and HTML
-fullscreen. The real YouTube TV welcome screen was loaded successfully, but
-live playback, live Leanback Back and physical IME composition remain unverified.
-See [UI notes](ui.md) for the native blur investigation and exact test boundaries.

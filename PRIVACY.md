@@ -47,12 +47,13 @@ further requests.
 ## Diagnostics and external links
 
 Tubevra has no built-in analytics, automatic crash-report uploads or automatic
-update checks. This does not cover data collected by YouTube or SponsorBlock.
+update checks. This does not cover data collected by YouTube, SponsorBlock or Return YouTube Dislike.
 Errors appear locally and may be written to the console. Electron/Chromium or
 your operating system may also keep local diagnostics. Review logs before sharing
 them, as they may contain file paths and technical details.
 
-Links to GitHub and SponsorBlock open in your default browser and use its profile
+Links to GitHub, Return YouTube Dislike and SponsorBlock open in your
+default browser and use its profile
 and the destination's privacy rules.
 
 ## Removing your data
@@ -75,7 +76,7 @@ supervisory authority. See the [European Commission's guidance](https://commissi
 
 Tubevra manages local data and the connections described above. Its author is
 responsible for their own processing as required by applicable law.
-Google/YouTube and SponsorBlock are responsible for the processing whose purposes
+Google/YouTube, SponsorBlock and Return YouTube Dislike are responsible for the processing whose purposes
 and means they determine within their services. For requests about that
 processing, contact the respective data controllers through the channels in
 their privacy policies.
@@ -87,3 +88,17 @@ external services.
 Questions about Tubevra can be raised in the
 [project repository](https://github.com/sthomsonpl/Tubevra); do not post cookies,
 tokens or personal data publicly.
+
+## Return YouTube Dislike
+
+Return YouTube Dislike is disabled by default. When enabled, it identifies the confirmed playing video in YouTube TV and fetches ratings even while the dock is hidden.
+When called, it sends a full video ID to returnyoutubedislikeapi.com to retrieve
+Like/Dislike estimates. The provider receives your IP address and request metadata.
+Requests use a separate temporary session without YouTube cookies or account
+credentials. No votes are sent. Results stay in RAM and are cleared on disable or
+exit; only rate-limit timestamps survive disable/re-enable within the process.
+Disable the extension to stop requests. See [attribution](THIRD_PARTY_NOTICES.md).
+
+The local ratings panel displays the existing RYD result with the dock and briefly
+after a confirmed change of video.
+Showing or hiding it does not create additional RYD requests or transmit its contents.

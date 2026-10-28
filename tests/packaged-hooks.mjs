@@ -16,10 +16,12 @@ if (process.platform !== 'win32' || process.arch !== 'x64')
   throw Error(
     'Packaged hook verification currently supports Windows x64 only.',
   );
+const ryd = process.argv.includes('--ryd');
 const adblock = process.argv.includes('--adblock');
 const sponsorblock = process.argv.includes('--sponsorblock');
-if (adblock && sponsorblock) throw Error('Choose one packaged extension test.');
-if ((adblock || sponsorblock) && process.argv.includes('--live'))
+if ([ryd, adblock, sponsorblock].filter(Boolean).length > 1)
+  throw Error('Choose one packaged extension test.');
+if ((ryd || adblock || sponsorblock) && process.argv.includes('--live'))
   throw Error('Extension package tests use local data; --live is unsupported.');
 const root = await mkdtemp(path.join(os.tmpdir(), 'tubevra-packaged-hooks-'));
 if (
@@ -39,7 +41,7 @@ try {
   const productionFuses = await getCurrentFuseWire(
     path.join(appDir, 'Tubevra.exe'),
   );
-  if (sponsorblock) {
+  if (sponsorblock || ryd) {
     // Inspect the untouched production package before replacing its main entry
     // with the local scenario. Keep packaged preloads and renderer unchanged.
     for (const file of ['LICENSE', 'THIRD_PARTY_NOTICES.md'])
@@ -50,8 +52,19 @@ try {
     for (const file of ['main.cjs', 'tv-preload.cjs'])
       assert.match(
         await readFile(path.join(source, '.vite/build', file), 'utf8'),
-        /sponsorblock/,
+        ryd ? /return-youtube-dislike/ : /sponsorblock/,
       );
+    if (ryd) {
+      for (const file of ['preload.cjs', 'ratings-preload.cjs'])
+        assert.ok(
+          (await readFile(path.join(source, '.vite/build', file))).length,
+        );
+      const html = await readFile(
+        path.join(source, '.vite/renderer/main_window/index.html'),
+        'utf8',
+      );
+      assert.match(html, /assets/);
+    }
     const metadata = JSON.parse(
       await readFile(path.join(source, 'package.json'), 'utf8'),
     );
@@ -69,26 +82,29 @@ try {
     ])
       assert.equal(productionFuses[fuse], FuseState.ENABLE);
     console.log(
-      'Production package: SponsorBlock bundles and distribution notices verified.',
+      'Production package: extension bundles, fuses and distribution notices verified.',
     );
   }
   for (const [entry, filename] of [
     [
-      sponsorblock
-        ? 'tests/electron/sponsorblock-playback-main.ts'
-        : adblock
-          ? 'tests/electron/adblock-main.ts'
-          : 'tests/electron/packaged-hooks-main.ts',
+      ryd
+        ? 'tests/electron/ryd-main.ts'
+        : sponsorblock
+          ? 'tests/electron/sponsorblock-playback-main.ts'
+          : adblock
+            ? 'tests/electron/adblock-main.ts'
+            : 'tests/electron/packaged-hooks-main.ts',
       'main.cjs',
     ],
     ['src/preload/tv-preload.ts', 'tv-preload.cjs'],
   ]) {
-    if ((adblock || sponsorblock) && filename === 'tv-preload.cjs') continue;
+    if ((ryd || adblock || sponsorblock) && filename === 'tv-preload.cjs')
+      continue;
     await build({
       configFile: false,
       plugins: [
         extensionBuildPlugin(
-          adblock || sponsorblock ? undefined : fixtureCatalog,
+          ryd || adblock || sponsorblock ? undefined : fixtureCatalog,
         ),
       ],
       define: {
@@ -97,6 +113,7 @@ try {
       },
       build: {
         emptyOutDir: false,
+        minify: false,
         outDir: path.join(source, '.vite/build'),
         lib: { entry, formats: ['cjs'], fileName: () => filename },
         rollupOptions: { external: ['electron', /^node:/] },
@@ -139,13 +156,14 @@ try {
   const status = await new Promise((resolve, reject) => {
     const child = spawn(path.join(appDir, 'Tubevra.exe'), [], {
       env,
-      windowsHide: true,
+      // Native-view RYD checks require a normally painted GUI from startup.
+      windowsHide: !ryd,
       stdio: 'inherit',
     });
     const timeout = setTimeout(() => {
       child.kill();
       reject(Error('Packaged hook test timed out.'));
-    }, 60000);
+    }, 90000);
     child.on('error', (error) => {
       clearTimeout(timeout);
       reject(error);
@@ -155,7 +173,15 @@ try {
       resolve(code);
     });
   });
-  const result = JSON.parse(await readFile(resultPath, 'utf8'));
+  const result = JSON.parse(
+    await readFile(resultPath, 'utf8').catch(() => {
+      throw Error(
+        'Packaged test produced no result (exit ' +
+          status +
+          '). See scenario error above.',
+      );
+    }),
+  );
   console.log(result);
   if (status !== 0 || !result.passed) throw Error('Packaged hook test failed.');
 } finally {

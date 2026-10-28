@@ -143,8 +143,14 @@ test('main bridges are derived from catalog modules without importing hooks', as
     require: (name) =>
       name === 'electron' ? {} : process.getBuiltinModule(name),
   });
-  assert.deepEqual(Object.keys(module.exports.connections), ['sponsorblock']);
-  assert.deepEqual(Object.keys(module.exports.starts), ['sponsorblock']);
+  assert.deepEqual(Object.keys(module.exports.connections), [
+    'sponsorblock',
+    'return-youtube-dislike',
+  ]);
+  assert.deepEqual(Object.keys(module.exports.starts), [
+    'sponsorblock',
+    'return-youtube-dislike',
+  ]);
   assert.equal(typeof module.exports.connections.sponsorblock, 'function');
   assert.equal(output[0].code.includes('ytInitialPlayerResponse'), false);
 });

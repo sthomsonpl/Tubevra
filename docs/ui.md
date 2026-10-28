@@ -19,18 +19,7 @@ Electron 45 provides supported native
 [`View.setBackgroundBlur`](https://www.electronjs.org/docs/latest/api/view#viewsetbackgroundblurblurradius).
 The toolbar uses radius 18, a translucent native background, rounded clipping and
 local CSS highlights. This blurs the real content underneath, without screenshots,
-duplicated video or an opaque imitation. A local coloured stripe probe on Windows
-confirmed that fine stripes are smoothed while broad background colours remain
-visible. The unblurred control retains sharp stripes. CSS `backdrop-filter` on a
-separate overlay also blurred the background in this specific Windows/Electron 45
-probe; that observation does not establish behaviour on other platforms or make
-the shell's own DOM rise above YouTube. The implementation uses the native API.
-
-The probe captures only its own test window using `desktopCapturer`; ordinary
-`BrowserWindow.capturePage` does not capture all sibling native surfaces. Test
-windows are activated because Electron requires a focused parent for native
-keyboard input and occluded Windows surfaces may not have a current painted frame.
-Application windows are not made always-on-top in production.
+duplicated video or an opaque imitation. Application windows are not made always-on-top in production.
 
 HTML fullscreen in the YouTube view hides the native toolbar, including its hit
 area. Exiting fullscreen restores it. Opening settings hides YouTube, pins the
@@ -69,77 +58,28 @@ Keyboard navigation keeps the dock visible only while Tubevra is active.
   Failed configuration writes keep the draft. The details panel scrolls when
   the form and deletion confirmation cannot fit together.
 
-## Verification on Windows, 2026-10-23
+## Ratings panel
 
-Passed:
+The optional Return YouTube Dislike panel uses a bounded 220 × 68 DIP local
+WebContentsView with a dedicated read-only preload. It shares the dock's native
+blur, translucent background and corner radius. It moves above the dock in narrow
+windows. Full counts remain available to assistive technology.
 
-- TypeScript checking and six Core configuration tests.
-- Production Windows x64 packaging with Electron Forge.
-- Packaged Electron UI integration against a local TV fixture: sandbox/preload
-  isolation, built-in protection, custom CRUD, exact UA values, reloads, cookies,
-  explicit active-preset replacement, safe text rendering, native Escape dispatch,
-  trusted right-click and input/simulated composition guards.
-- Actual HTML fullscreen on a fixture video element hides and restores the native
-  toolbar. Its bounds and bottom margin are asserted. Settings fit without
-  horizontal overflow at the minimum window width and scroll vertically as needed.
-- A simulated load failure is displayed while preserving the saved UA selection.
-- The real service loaded its `TVHTML5` welcome screen at `youtube.com/tv#/` in
-  an isolated profile. No sign-in, consent choice or playback was automated.
+A confirmed video change reveals loading, then the first result for four seconds.
+Hover holds the popup without revealing the dock. The panel also accompanies the
+dock; showing either surface never initiates a ratings request. Settings, YouTube
+loading/errors, HTML fullscreen and hidden/minimized windows suppress the panel.
+Native window fullscreen retains normal dock behaviour.
 
-Not verified: Back and playback on real Leanback content screens, physical IME,
-OS mouse hit testing outside the toolbar, macOS and Linux. Input sent directly to
-WebContents in the fixture tests does not prove OS-level hit testing. Full
-`npm run lint` reports a formatting issue in the pre-existing `AGENTS.md`; that
-file was left unchanged. Targeted lint/format checks cover the changed files.
+A window-owned version prevents late results from restoring old counters. Missing
+data and errors are text states; zero is a valid count. The native rectangular hit
+area includes rounded corners. TV focus is restored only in an active window
+outside settings; this is not click-through.
 
-Run `npm run package`, then `npm run test:ui`. Run `npm run test:glass` for the
-local blur comparison. An optional read-only live check is available via
-`node tests/electron/run.cjs live-smoke`. These tests use isolated disposable
-profiles and do not read or reset the user's Tubevra configuration.
+## Verification
 
-## Fullscreen verification on Windows, 2026-10-27
-
-The Electron UI test passed native fullscreen entry/exit through the dock,
-F11 on all three surfaces, state updates from native window events, settings
-inside window fullscreen, dock bounds and overlapping request handling. Actual
-HTML fullscreen on the local fixture also hid and restored the dock. The test
-writes `out/verification/ui/fullscreen-report.json` after these checks complete.
-
-Verification used current production Vite bundles in a test-only ASAR with the
-installed Electron runtime and a disposable profile. This is a local fixture
-check, not live YouTube or a complete distribution-package test. Normal packaging
-is blocked by Windows version metadata parsing of the existing `0.2.0-0.dev`
-version. The full UI suite stops later at `idle SponsorBlock has no status row`;
-the fullscreen checks run before that unrelated scenario. Type checking and
-lint/format checks for the changed files pass; repository-wide formatting reports
-37 other files. macOS, Linux and physical IME remain unverified.
-
-## Inactive-window dock verification on Windows, 2026-10-27
-
-Run `npm run test:dock` to exercise the current source controller with native
-Electron windows and views in a disposable profile. The regression test failed
-before the fix when returning the cursor to the inactive window's bottom strip.
-After the fix, reveal/hide keeps the other window focused. The test also covers
-keyboard visibility, restoring content focus in the active window, covering
-windows, minimize/restore, native fullscreen, playback-fullscreen suppression
-and settings pinning with a focused input. The report is written to
-`out/verification/dock/report.json`.
-
-Cursor coordinates are simulated; focus, views and dock animations use Electron.
-The fixture uses always-on-top test windows to ensure their surfaces are painted;
-production windows retain their existing behaviour. Playback fullscreen and
-settings are exercised through the dock controller's state, without the complete
-application or IPC. This is not OS mouse hit testing, a distribution-package test
-or live YouTube verification. macOS, Linux and physical IME remain unverified.
-
-## Dock animation ownership
-
-toolbar-auto-hide.ts owns dock visibility, focus and geometry. overlay-animation.ts
-owns raster frames, native glass, frame versions, one animation clock and cursor
-monitor. tv-window.ts connects them without extension dependencies or IPC/preload
-changes. The coordinator supports multiple participants.
-
-Motion replaces native-layer animation with a shared 240 ms easing curve and a
-16 ms main-process loop; improved performance under load is not claimed.
-The isolated Electron dock test covers the scenarios listed above using simulated
-cursor coordinates; the same platform and verification limitations apply.
+Run npm run test:dock and npm run test:ryd:electron for isolated native-view
+fixtures. After npm run package, run npm run test:ui and npm run test:ryd:packaged
+on Windows x64. Fixtures and simulated
+cursor/input do not establish OS hit testing, physical IME, live YouTube playback
+or behaviour on macOS/Linux. These require native checks.

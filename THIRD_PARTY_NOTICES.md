@@ -57,3 +57,14 @@ Windows icon.
 It uses the Windows ZIP API on Windows because `cross-zip` 4.0.1 calls an API
 removed in Node.js 25; other platforms retain the upstream implementation.
 No upstream source files have been copied or modified.
+
+## Return YouTube Dislike data
+
+The optional ratings service uses the official API of
+[Return YouTube Dislike](https://returnyoutubedislike.com/).
+[API usage rights](https://returnyoutubedislike.com/docs/usage-rights) require
+attribution and specify per-client limits of 100 requests/minute and 10,000/day.
+Tubevra applies stricter local limits and respects server cooldowns. Ratings are
+estimates cached only in RAM. The integration is independently authored under
+Tubevra's GPL-3.0-only license; no RYD extension code is copied. The extension's
+source license is not asserted to be a license for the API database.
