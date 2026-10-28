@@ -1,0 +1,25 @@
+.ratings-page {
+  background: transparent;
+  overflow: hidden;
+}
+.ratings {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  user-select: none;
+}
+.ratings canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* Retain live status text and full counters for assistive technology. */
+.ratings-counts,
+.ratings small {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

@@ -1,8 +1,13 @@
 import { build } from 'vite';
 import { extensionBuildPlugin } from '../build/extensions.mjs';
+const extension = process.argv[2];
+if (!['adblock', 'ryd'].includes(extension))
+  throw Error('Choose adblock or ryd.');
+
 for (const [entry, filename] of [
-  ['tests/electron/adblock-main.ts', 'main.cjs'],
+  [`tests/electron/${extension}-main.ts`, 'main.cjs'],
   ['src/preload/preload.ts', 'preload.cjs'],
+  ['src/preload/ratings-preload.ts', 'ratings-preload.cjs'],
   ['src/preload/tv-preload.ts', 'tv-preload.cjs'],
 ]) {
   await build({
@@ -14,7 +19,7 @@ for (const [entry, filename] of [
     },
     build: {
       emptyOutDir: filename === 'main.cjs',
-      outDir: 'out/verification/adblock/build',
+      outDir: `out/verification/${extension}/build`,
       lib: { entry, formats: ['cjs'], fileName: () => filename },
       rollupOptions: { external: ['electron', /^node:/] },
     },
@@ -24,6 +29,6 @@ await build({
   configFile: false,
   base: './',
   build: {
-    outDir: 'out/verification/adblock/renderer/main_window',
+    outDir: `out/verification/${extension}/renderer/main_window`,
   },
 });

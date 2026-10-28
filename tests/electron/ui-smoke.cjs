@@ -161,6 +161,9 @@ app
     const openProjectGitHub = ipcMain._invokeHandlers.get(
       'tubevra:open-project-github',
     );
+    const openPrivacyPolicy = ipcMain._invokeHandlers.get(
+      'tubevra:open-privacy-policy',
+    );
     const trusted = { sender: shell, senderFrame: shell.mainFrame };
     const toggleFullscreen = ipcMain._invokeHandlers.get(
       'tubevra:toggle-fullscreen',
@@ -170,6 +173,7 @@ app
       setExtension,
       reloadTV,
       openProjectGitHub,
+      openPrivacyPolicy,
       toggleFullscreen,
     ]) {
       for (const event of [
@@ -194,6 +198,10 @@ app
     assert.equal((await reloadTV(trusted, 'extra')).ok, false);
     assert.equal(
       (await openProjectGitHub(trusted, 'https://example.com')).ok,
+      false,
+    );
+    assert.equal(
+      (await openPrivacyPolicy(trusted, 'https://example.com')).ok,
       false,
     );
     {
@@ -333,7 +341,7 @@ app
       (
         await shell.executeJavaScript('window.tubevra.getExtensions()')
       ).value.items.map((item) => item.id),
-      ['adblock', 'sponsorblock'],
+      ['adblock', 'sponsorblock', 'return-youtube-dislike'],
     );
     await shell.executeJavaScript(
       `document.querySelector('[data-section="user-agents"]').click()`,
@@ -525,7 +533,7 @@ app
       () =>
         shell.executeJavaScript(`
         document.querySelector('#panel-extensions .extension-attribution-link') &&
-        !document.querySelector('#panel-extensions [role="status"]')
+        !document.querySelector('#panel-extensions .widget-row:has([data-extension-id="sponsorblock"]) [role="status"]')
       `),
       'idle SponsorBlock has no status row',
     );
@@ -764,9 +772,16 @@ app
         document.querySelector('#panel-about').hidden,
         document.querySelector('#panel-user-agents').hidden,
         document.querySelector('#app-version').textContent,
-        document.querySelector('#project-github').href
+        document.querySelector('#project-github').href,
+        document.querySelector('#privacy-policy').href
       ]`),
-      [false, true, app.getVersion(), 'https://github.com/sthomsonpl/Tubevra'],
+      [
+        false,
+        true,
+        app.getVersion(),
+        'https://github.com/sthomsonpl/Tubevra',
+        'https://github.com/sthomsonpl/Tubevra/blob/main/PRIVACY.md',
+      ],
     );
     const openExternal = externalShell.openExternal;
     const opened = [];
@@ -777,6 +792,12 @@ app
       await click(shell, 'project-github');
       await waitFor(() => opened.length === 1, 'project link opened');
       assert.deepEqual(opened, ['https://github.com/sthomsonpl/Tubevra']);
+      await click(shell, 'privacy-policy');
+      await waitFor(() => opened.length === 2, 'privacy policy opened');
+      assert.equal(
+        opened[1],
+        'https://github.com/sthomsonpl/Tubevra/blob/main/PRIVACY.md',
+      );
       externalShell.openExternal = async () => {
         throw new Error('Browser unavailable');
       };
@@ -790,6 +811,27 @@ app
       );
       externalShell.openExternal = async () => {};
       await click(shell, 'project-github');
+      await click(shell, 'privacy-policy');
+      await waitFor(
+        () =>
+          shell.executeJavaScript(
+            `document.querySelector('#about-feedback').textContent === ''`,
+          ),
+        'browser failure cleared',
+      );
+      externalShell.openExternal = async () => {
+        throw new Error('Privacy browser unavailable');
+      };
+      await click(shell, 'privacy-policy');
+      await waitFor(
+        () =>
+          shell.executeJavaScript(
+            `document.querySelector('#about-feedback').textContent === 'Privacy browser unavailable'`,
+          ),
+        'visible privacy browser failure',
+      );
+      externalShell.openExternal = async () => {};
+      await click(shell, 'privacy-policy');
     } finally {
       externalShell.openExternal = openExternal;
     }
@@ -807,7 +849,7 @@ app
       `document.querySelector('[data-section="user-agents"]').click()`,
     );
     checks.push(
-      'About version from Electron, fixed external GitHub link, sender validation and visible browser failure',
+      'About version from Electron, fixed external GitHub and privacy links, sender validation and visible browser failures',
     );
     assert.equal(
       await shell.executeJavaScript(

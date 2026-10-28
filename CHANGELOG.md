@@ -1,12 +1,10 @@
 # Changes — Unreleased
 
 ### Added
-- Added a hardware acceleration toggle.
-- Added SponsorBlock for automatic skipping of sponsor segments.
-- Added a fullscreen toggle to the dock.
-
+-Added Return YouTube Dislike (RYD) extension.
+-Added a Privacy Policy link in About.
 ### Changed
--
+
 
 ### Fixed
-- Fixed dock hover in inactive windows.
+- Fixed Tubevra appearing as “Unknown app” in Windows media controls.

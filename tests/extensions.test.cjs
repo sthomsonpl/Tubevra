@@ -84,6 +84,15 @@ test('Adblock registration preserves existing preferences and persists explicit 
   assert.equal(sponsor.main, true);
   assert.equal(sponsor.page, true);
   assert.equal(sponsor.hooks, false);
+  const ryd = engine
+    .snapshot()
+    .items.find((item) => item.id === 'return-youtube-dislike');
+  assert.equal(ryd.enabled, false);
+  assert.equal(ryd.defaultEnabled, false);
+  assert.deepEqual(ryd.modes, ['tv']);
+  assert.equal(ryd.main, true);
+  assert.equal(ryd.page, true);
+  assert.equal(ryd.hooks, false);
   await engine.update({ id: 'adblock', enabled: false });
   const reopened = await ExtensionStore.open(dir, extensionRegistry);
   assert.equal(reopened.enabled('adblock'), false);

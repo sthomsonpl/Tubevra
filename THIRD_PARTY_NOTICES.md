@@ -32,6 +32,16 @@ Third-party components retain their own licenses. Required license texts, copyri
 
 ### Windows installer tooling
 
+`@electron/packager` 20.3.0 from
+[Electron Packager](https://github.com/electron/packager/tree/v20.3.0) is licensed
+under BSD-2-Clause, copyright (c) 2015 Max Ogden and other contributors.
+`build/patch-packager.mjs`, run by npm's `postinstall`, modifies the installed
+`@electron/packager/dist/resedit.js` parser to exclude SemVer prerelease and build
+metadata from numeric Windows version fields. Full version strings and the
+application's `package.json` version are preserved. The patch checks the tool
+version and expected parser text, and must be reviewed when upgrading Packager.
+The upstream license is retained at `node_modules/@electron/packager/LICENSE`.
+
 The Windows installer uses `app-builder-lib` 26.15.3 from
 [electron-builder](https://github.com/electron-userland/electron-builder), licensed
 under MIT, and its NSIS installer tooling. `@electron-forge/maker-base` 8.0.1 is
@@ -57,3 +67,14 @@ Windows icon.
 It uses the Windows ZIP API on Windows because `cross-zip` 4.0.1 calls an API
 removed in Node.js 25; other platforms retain the upstream implementation.
 No upstream source files have been copied or modified.
+
+## Return YouTube Dislike data
+
+The optional ratings service uses the official API of
+[Return YouTube Dislike](https://returnyoutubedislike.com/).
+[API usage rights](https://returnyoutubedislike.com/docs/usage-rights) require
+attribution and specify per-client limits of 100 requests/minute and 10,000/day.
+Tubevra applies stricter local limits and respects server cooldowns. Ratings are
+estimates cached only in RAM. The integration is independently authored under
+Tubevra's GPL-3.0-only license; no RYD extension code is copied. The extension's
+source license is not asserted to be a license for the API database.

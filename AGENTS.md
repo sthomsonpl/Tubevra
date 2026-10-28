@@ -68,12 +68,12 @@ Planowane funkcjonalności nie są automatycznie częścią bieżącego zadania.
 
 Analiza i odczyt plików potrzebne do przygotowania planu nie wymagają jego zatwierdzenia. Jeżeli zadanie dotyczy tylko analizy, nie modyfikuj kodu.
 
-Uwzględniaj dodatkowe instrukcje z `.agents/`, jeśli dotyczą aktualnego zadania.
+Przed rozpoczęciem zadania przeczytaj odpowiednie instrukcje z `.agents/` zgodnie z poniższymi warunkami. Stosuj je łącznie z zasadami `AGENTS.md`, bez zastępowania istniejących wymagań.
 
 - [`.agents/architecture.md`](.agents/architecture.md) — przy zmianach w podziale odpowiedzialności, widokach Electron, konfiguracji i systemie rozszerzeń.
 - [`.agents/developement.md`](.agents/developement.md) — przy implementacji, testowaniu i dokumentowaniu zmian.
 - [`.agents/security.md`](.agents/security.md) — przy zmianach w IPC, preloadach, nawigacji, uprawnieniach, rozszerzeniach i zapisie konfiguracji.
-
+- [`.agents/implementation-planning.md`](.agents/implementation-planning.md) — obowiązkowo podczas przygotowywania planów implementacji, napraw błędów i refaktoryzacji. Określa sposób analizy zależności, kolejność etapów, stabilność fundamentów i kryteria weryfikacji.
 
 ## Git & Commits
 

@@ -1,6 +1,6 @@
 import type { ExtensionsState } from '../../extensions/types';
 import { createWidgetRow, createWidgetToggle } from '../widgets';
-import { SPONSORBLOCK_URL } from '../../shared/api';
+import { SPONSORBLOCK_URL, RYD_URL } from '../../shared/api';
 import {
   sponsorAvailability,
   sponsorPlayback,
@@ -127,6 +127,32 @@ export function mountExtensions(root: HTMLElement) {
               ? playbackLabels[playback]
               : serviceLabels[service ?? 'unknown'];
       }
+      if (
+        item.id === 'return-youtube-dislike' &&
+        item.enabled &&
+        item.diagnostics?.main?.playback
+      ) {
+        const messages: Record<string, string> = {
+          'no-video': 'Waiting for a video',
+          'unsupported-player': 'Unsupported YouTube TV player',
+          loading: 'Loading ratings…',
+          ready: 'Ratings ready',
+          empty: 'No ratings available',
+          error: 'Could not load ratings',
+          'rate-limited': 'Request limit reached. Try later.',
+        };
+        status.textContent = [
+          status.textContent,
+          messages[item.diagnostics.main.playback],
+        ]
+          .filter(Boolean)
+          .join(': ');
+      }
+      if (
+        item.id === 'return-youtube-dislike' &&
+        item.diagnostics?.page?.connection === 'error'
+      )
+        status.textContent = 'RYD private connection failed';
       const { label, input: toggle } = createWidgetToggle(
         item.name,
         item.enabled,
@@ -155,18 +181,23 @@ export function mountExtensions(root: HTMLElement) {
         }
       });
       if (status.textContent) copy.append(status);
-      if (item.id === 'sponsorblock') {
+      if (item.id === 'sponsorblock' || item.id === 'return-youtube-dislike') {
+        const isSponsorBlock = item.id === 'sponsorblock';
         const attribution = document.createElement('p');
         const link = document.createElement('a');
-        link.textContent = 'SponsorBlock';
-        link.href = SPONSORBLOCK_URL;
+        link.textContent = isSponsorBlock
+          ? 'SponsorBlock'
+          : 'Return YouTube Dislike';
+        link.href = isSponsorBlock ? SPONSORBLOCK_URL : RYD_URL;
         link.dataset.extensionId = item.id;
         link.className = 'extension-attribution-link';
         if (focusedId === item.id && focusedLink) restoreFocus = link;
         link.addEventListener('click', async (event) => {
           event.preventDefault();
           try {
-            const result = await window.tubevra.openSponsorBlock();
+            const result = await (isSponsorBlock
+              ? window.tubevra.openSponsorBlock()
+              : window.tubevra.openReturnYouTubeDislike());
             if (!result.ok) operationError = result.error;
           } catch {
             operationError = 'Cannot communicate with Tubevra.';
@@ -174,6 +205,12 @@ export function mountExtensions(root: HTMLElement) {
           render(current!);
         });
         attribution.append('(Using ', link, ')');
+        if (!isSponsorBlock) {
+          const privacy = document.createElement('p');
+          privacy.textContent =
+            'When enabled, sends the current video ID and your IP address to RYD. Ratings are estimates. Disable this add-on to stop requests.';
+          copy.append(privacy);
+        }
         copy.append(attribution);
       }
       row.append(label);

@@ -1,7 +1,7 @@
 {
   "name": "tubevra",
   "productName": "Tubevra",
-  "version": "0.2.0-alpha",
+  "version": "0.3.0-alpha",
   "private": true,
   "description": "Unofficial desktop YouTube client with TV and Desktop modes",
   "author": "sthomsonpl",
@@ -9,6 +9,10 @@
   "license": "GPL-3.0-only",
   "main": ".vite/build/main.cjs",
   "scripts": {
+    "postinstall": "node build/patch-packager.mjs",
+    "test:ryd": "node --test tests/ryd.test.cjs tests/toolbar-motion.test.cjs",
+    "test:ryd:packaged": "node tests/packaged-hooks.mjs --ryd",
+    "test:ryd:electron": "node tests/build-extension.mjs ryd && node tests/electron/run.cjs ryd-smoke",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
@@ -21,7 +25,6 @@
     "test:adblock": "node --test tests/adblock.test.cjs",
     "test:ui": "node tests/electron/run.cjs ui-smoke",
     "test:hardware": "node tests/electron/run.cjs hardware-smoke",
-    "test:glass": "node tests/electron/run.cjs glass-probe",
     "test:dock": "node tests/electron/run.cjs dock-smoke",
     "test:extensions": "node --test tests/extensions.test.cjs tests/extension-build.test.mjs",
     "test:runtime": "node --test tests/runtime.test.cjs tests/hooks.test.cjs tests/extension-services.test.cjs",
@@ -30,7 +33,7 @@
     "test:hooks:electron": "node tests/build-hooks.mjs && node tests/electron/run.cjs hooks-smoke && node tests/electron/run.cjs hooks-bootstrap-smoke",
     "test:runtime:electron": "node tests/build-runtime.mjs && node tests/electron/run.cjs runtime-smoke",
     "test:hooks:packaged": "node tests/packaged-hooks.mjs",
-    "test:adblock:electron": "node tests/build-adblock.mjs && node tests/electron/run.cjs adblock-smoke",
+    "test:adblock:electron": "node tests/build-extension.mjs adblock && node tests/electron/run.cjs adblock-smoke",
     "test:adblock:packaged": "node tests/packaged-hooks.mjs --adblock"
   },
   "devDependencies": {

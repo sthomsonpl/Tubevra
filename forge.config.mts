@@ -59,6 +59,11 @@ const config: ForgeConfig = {
           target: 'preload',
         },
         {
+          entry: 'src/preload/ratings-preload.ts',
+          config: 'vite.preload.config.mts',
+          target: 'preload',
+        },
+        {
           entry: 'src/preload/tv-preload.ts',
           config: 'vite.preload.config.mts',
           target: 'preload',
