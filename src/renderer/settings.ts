@@ -1,5 +1,5 @@
 import type { AppState, Result, UserAgentCommand } from '../shared/api';
-import { PROJECT_GITHUB_URL } from '../shared/api';
+import { PROJECT_GITHUB_URL, PRIVACY_POLICY_URL } from '../shared/api';
 import { mountExtensions } from './extensions/settings';
 import { createWidgetToggle } from './widgets';
 
@@ -187,6 +187,16 @@ export function mountSettings(root: HTMLElement) {
                   <p>sthomsonpl/Tubevra</p>
                 </div>
                 <a id="project-github" class="secondary compact-btn project-link" href="${PROJECT_GITHUB_URL}" aria-label="Open Tubevra on GitHub in your browser">Open GitHub ↗</a>
+              </div>
+              <div class="widget-row">
+                <span class="row-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4 8 9 8 9s8-5 8-9V6l-8-3Z"/><path d="m8 12 3 3 5-6"/></svg>
+                </span>
+                <div class="row-copy">
+                  <strong>Privacy Policy</strong>
+                  <p>Read how Tubevra handles your data.</p>
+                </div>
+                <a id="privacy-policy" class="secondary compact-btn project-link" href="${PRIVACY_POLICY_URL}" aria-label="Open Tubevra Privacy Policy on GitHub in your browser">Open Privacy Policy ↗</a>
               </div>
             </div>
             <p id="about-feedback" class="feedback error" role="alert"></p>
@@ -640,6 +650,17 @@ export function mountSettings(root: HTMLElement) {
     element('about-feedback').textContent = '';
     try {
       const result = await window.tubevra.openProjectGitHub();
+      if (!result.ok) element('about-feedback').textContent = result.error;
+    } catch {
+      element('about-feedback').textContent =
+        'Cannot communicate with Tubevra.';
+    }
+  });
+  element('privacy-policy').addEventListener('click', async (event) => {
+    event.preventDefault();
+    element('about-feedback').textContent = '';
+    try {
+      const result = await window.tubevra.openPrivacyPolicy();
       if (!result.ok) element('about-feedback').textContent = result.error;
     } catch {
       element('about-feedback').textContent =

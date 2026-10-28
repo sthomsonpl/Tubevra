@@ -9,6 +9,7 @@ const api: TubevraAPI = {
     ipcRenderer.invoke(IPC.setHardwareAcceleration, enabled),
   restartApp: () => ipcRenderer.invoke(IPC.restartApp),
   openProjectGitHub: () => ipcRenderer.invoke(IPC.openProjectGitHub),
+  openPrivacyPolicy: () => ipcRenderer.invoke(IPC.openPrivacyPolicy),
   openSponsorBlock: () => ipcRenderer.invoke(IPC.openSponsorBlock),
   openReturnYouTubeDislike: () =>
     ipcRenderer.invoke(IPC.openReturnYouTubeDislike),

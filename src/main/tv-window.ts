@@ -17,6 +17,7 @@ import { pathToFileURL } from 'node:url';
 import {
   IPC,
   PROJECT_GITHUB_URL,
+  PRIVACY_POLICY_URL,
   SPONSORBLOCK_URL,
   RYD_URL,
 } from '../shared/api';
@@ -497,6 +498,25 @@ export async function createTVWindow(
     },
   );
   ipcMain.handle(
+    IPC.openPrivacyPolicy,
+    async (event, ...args): Promise<Result<null>> => {
+      assertShell(event);
+      if (args.length) return { ok: false, error: 'Unexpected arguments.' };
+      try {
+        await shell.openExternal(PRIVACY_POLICY_URL);
+        return { ok: true, value: null };
+      } catch (cause) {
+        return {
+          ok: false,
+          error:
+            cause instanceof Error
+              ? cause.message
+              : 'Could not open Privacy Policy.',
+        };
+      }
+    },
+  );
+  ipcMain.handle(
     IPC.openSponsorBlock,
     async (event, ...args): Promise<Result<null>> => {
       assertShell(event);
@@ -693,6 +713,7 @@ export async function createTVWindow(
       IPC.setHardwareAcceleration,
       IPC.restartApp,
       IPC.openProjectGitHub,
+      IPC.openPrivacyPolicy,
       IPC.openSponsorBlock,
       IPC.openReturnYouTubeDislike,
       IPC.getExtensions,

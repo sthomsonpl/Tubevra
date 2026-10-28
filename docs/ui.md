@@ -43,6 +43,9 @@ Keyboard navigation keeps the dock visible only while Tubevra is active.
 
 ## Settings behaviour
 
+- About opens the project GitHub page and Privacy Policy in the default browser.
+  The policy links to `PRIVACY.md` on the repository's `main` branch. Browser
+  failures are shown in About; only fixed destinations are exposed through IPC.
 - Built-ins have readable names but retain their supplied UA strings verbatim.
   Fields are read-only and edit/delete operations remain blocked in Core.
 - Selecting a list item inspects it. Only **Apply preset** changes the active UA.
