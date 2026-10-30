@@ -108,6 +108,52 @@ app
       ),
       [{ feedNudgeRenderer: {} }],
     );
+    const refresh = {
+      continuationContents: {
+        tvSurfaceContentContinuation: {
+          content: {
+            sectionListRenderer: {
+              contents: [
+                { adSlotRenderer: {} },
+                {
+                  shelfRenderer: {
+                    content: {
+                      horizontalListRenderer: {
+                        items: [{ tileRenderer: {} }, { adSlotRenderer: {} }],
+                      },
+                    },
+                  },
+                },
+              ],
+              continuations: [
+                { nextContinuationData: { continuation: 'kept' } },
+              ],
+            },
+          },
+        },
+      },
+    };
+    for (let i = 0; i < 3; i++) {
+      const refreshed = await tv.executeJavaScript(
+        `JSON.parse(${JSON.stringify(JSON.stringify(refresh))}).continuationContents.tvSurfaceContentContinuation.content.sectionListRenderer`,
+      );
+      assert.deepEqual(refreshed.contents, [
+        {
+          shelfRenderer: {
+            content: {
+              horizontalListRenderer: { items: [{ tileRenderer: {} }] },
+            },
+          },
+        },
+      ]);
+      assert.deepEqual(
+        refreshed.continuations,
+        refresh.continuationContents.tvSurfaceContentContinuation.content
+          .sectionListRenderer.continuations,
+      );
+      assert.equal((await state()).items[0].status, 'active');
+      assert.equal(await tv.executeJavaScript('firstResult.adSlots.length'), 0);
+    }
     await tv.executeJavaScript('location.hash = "#/watch"');
     assert.equal(await parse(), 0);
     await waitFor(async () => (await state()).items[0].reloadRequired);
@@ -201,6 +247,7 @@ app
         passed: true,
         checks: [
           'production Adblock and serialized player/feed helpers',
+          'repeated surface refresh filtering in the same document',
           'SponsorBlock default state, repeated toggles and Adblock coexistence',
           'first script',
           'CSP',

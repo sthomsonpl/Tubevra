@@ -163,6 +163,58 @@ test('feed removes a banner and row slots, preserves content and requires reload
   r.control.dispose();
 });
 
+const surfaceContinuation = (items) => ({
+  continuationContents: {
+    tvSurfaceContentContinuation: {
+      content: {
+        sectionListRenderer: {
+          contents: items,
+          continuations: [{ nextContinuationData: { continuation: 'kept' } }],
+          trackingParams: 'kept',
+        },
+      },
+      header: { fixture: true },
+      isImplicitRefresh: true,
+    },
+  },
+});
+
+test('surface refresh filters banners and row ads on repeated responses', () => {
+  const r = runtime();
+  const tile = { tileRenderer: { videoId: 'kept' } };
+  const input = surfaceContinuation([
+    { adSlotRenderer: {} },
+    shelf([tile, { adSlotRenderer: {} }, tile]),
+  ]);
+  const expected = surfaceContinuation([shelf([tile, tile])]);
+  for (let i = 0; i < 3; i++) assert.deepEqual(r.parse(input), expected);
+  assert.equal(r.control.drain().at(-1).status, 'active');
+  assert.deepEqual(r.parse(expected), expected);
+  r.toggle(1, false);
+  assert.deepEqual(r.parse(input), input);
+  r.control.dispose();
+});
+
+test('surface refresh without ads needs no reload and malformed data is not partially filtered', () => {
+  const r = runtime();
+  const clean = surfaceContinuation([shelf([{ tileRenderer: {} }])]);
+  assert.deepEqual(r.parse(clean), clean);
+  assert.equal(
+    r.control.drain().some((report) => report.reloadReason),
+    false,
+  );
+  const malformed = surfaceContinuation([
+    { adSlotRenderer: {} },
+    shelf([{ adSlotRenderer: null }]),
+  ]);
+  assert.deepEqual(r.parse(malformed), malformed);
+  const report = r.control.drain().at(-1);
+  assert.equal(report.status, 'error');
+  assert.match(report.error, /tvSurfaceContentContinuation.*adSlotRenderer/);
+  assert.equal(report.reloadReason, null);
+  r.control.dispose();
+});
+
 test('continuations, recommendations and secondary sections preserve metadata', () => {
   const tile = { tileRenderer: {} };
   for (const wrap of [

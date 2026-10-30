@@ -78,6 +78,7 @@ export function inspectFeedAds(
     'contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents',
     'contents.sectionListRenderer.contents',
     'continuationContents.sectionListContinuation.contents',
+    'continuationContents.tvSurfaceContentContinuation.content.sectionListRenderer.contents',
     'continuationContents.horizontalListContinuation.items',
     'contents.singleColumnWatchNextResults.pivot.sectionListRenderer.contents',
   ])
