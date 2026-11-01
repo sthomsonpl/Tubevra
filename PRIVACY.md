@@ -101,4 +101,6 @@ Disable the extension to stop requests. See [attribution](THIRD_PARTY_NOTICES.md
 
 The local ratings panel displays the existing RYD result with the dock and briefly
 after a confirmed change of video.
+You can disable Show with dock in Add-ons to show the panel only after a video change.
+This locally saved preference does not stop rating downloads; disable RYD to stop requests.
 Showing or hiding it does not create additional RYD requests or transmit its contents.

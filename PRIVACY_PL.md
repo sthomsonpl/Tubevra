@@ -109,4 +109,6 @@ Zobacz [informacje o usługodawcy](THIRD_PARTY_NOTICES.md).
 
 Lokalny panel ocen pokazuje istniejący wynik RYD razem z dockiem oraz przez krótki
 czas po potwierdzonej zmianie filmu.
+Opcję Show with dock można wyłączyć w Add-ons, aby panel pojawiał się tylko po zmianie filmu.
+Ta zapisywana lokalnie preferencja nie zatrzymuje pobierania ocen; żądania zatrzymuje wyłączenie RYD.
 Pokazywanie i ukrywanie panelu nie powoduje dodatkowych żądań RYD ani wysyłania jego zawartości.

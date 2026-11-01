@@ -70,7 +70,9 @@ windows. Full counts remain available to assistive technology.
 
 A confirmed video change reveals loading, then the first result for four seconds.
 Hover holds the popup without revealing the dock. The panel also accompanies the
-dock; showing either surface never initiates a ratings request. Settings, YouTube
+dock when Show with dock is enabled (the default); disabling it keeps only the
+video-change popup. The preference is saved and applies without a reload.
+Showing either surface never initiates a ratings request. Settings, YouTube
 loading/errors, HTML fullscreen and hidden/minimized windows suppress the panel.
 Native window fullscreen retains normal dock behaviour.
 

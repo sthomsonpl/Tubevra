@@ -11,10 +11,14 @@ import { TOOLBAR_STYLE } from './toolbar-style';
 export function createRatingsVisibility() {
   let allowed = false,
     version = 0;
+  let showWithDock = true;
   let lastVideo: string | null = null;
   let waitingForResult = false,
     autoUntil = 0;
   return {
+    setShowWithDock(value: boolean) {
+      showWithDock = value;
+    },
     update(snapshot: RatingsSnapshot, permitted: boolean, now: number) {
       version = snapshot.version;
       const id = 'videoId' in snapshot ? snapshot.videoId : null;
@@ -41,7 +45,7 @@ export function createRatingsVisibility() {
       if (blocked) {
         waitingForResult = false;
         autoUntil = 0;
-      } else if (hovered && !dockVisible && !waitingForResult)
+      } else if (hovered && !(showWithDock && dockVisible) && !waitingForResult)
         autoUntil = Math.max(autoUntil, now + 1600);
       return {
         allowed,
@@ -49,7 +53,9 @@ export function createRatingsVisibility() {
         visible:
           !blocked &&
           allowed &&
-          (dockVisible || waitingForResult || now < autoUntil),
+          ((showWithDock && dockVisible) ||
+            waitingForResult ||
+            now < autoUntil),
       };
     },
   };
@@ -142,6 +148,7 @@ export function createRatingsPanel(
       allowed = value;
       visibility.update(state, allowed, performance.now());
     },
+    setShowWithDock: visibility.setShowWithDock,
     presentation: visibility.request,
     layout(anchor: Electron.Rectangle) {
       const { width, height } = window.contentView.getBounds();

@@ -40,6 +40,7 @@ export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 // Narrow operations exposed only to the trusted local application UI.
 export interface ExtensionsAPI {
+  setRydShowWithDock(enabled: boolean): Promise<Result<ExtensionsState>>;
   getExtensions(): Promise<Result<ExtensionsState>>;
   setExtensionEnabled(
     command: ExtensionCommand,
@@ -81,6 +82,7 @@ export const IPC = Object.freeze({
   stateChanged: 'tubevra:state-changed',
   requestTVBack: 'tubevra:request-tv-back',
   dispatchTVBack: 'tubevra:dispatch-tv-back',
+  setRydShowWithDock: 'tubevra:ryd:set-show-with-dock',
   getExtensions: 'tubevra:extensions:get',
   setExtensionEnabled: 'tubevra:extensions:set-enabled',
   extensionsStateChanged: 'tubevra:extensions:state-changed',

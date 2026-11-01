@@ -14,6 +14,8 @@ const api: TubevraAPI = {
   openReturnYouTubeDislike: () =>
     ipcRenderer.invoke(IPC.openReturnYouTubeDislike),
   reloadTV: () => ipcRenderer.invoke(IPC.reloadTV),
+  setRydShowWithDock: (enabled) =>
+    ipcRenderer.invoke(IPC.setRydShowWithDock, enabled),
   getExtensions: () => ipcRenderer.invoke(IPC.getExtensions),
   setExtensionEnabled: (command) =>
     ipcRenderer.invoke(IPC.setExtensionEnabled, command),

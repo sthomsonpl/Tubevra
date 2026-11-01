@@ -242,6 +242,7 @@ export async function createTVWindow(
       !playbackFullscreen &&
       mainWindow.isVisible() &&
       !mainWindow.isMinimized();
+    ratings.setShowWithDock(extensions.snapshot().ryd.showWithDock);
     ratings.setAllowed(allowed);
     overlays.refresh();
   };
@@ -291,6 +292,7 @@ export async function createTVWindow(
   const pageBridge = connectPage(ipcMain, contents, extensions);
   notifyExtensions = () => {
     ratings.refresh();
+    updateRatings();
     publish();
     if (!mainWindow.isDestroyed())
       mainWindow.webContents.send(
@@ -548,6 +550,22 @@ export async function createTVWindow(
       ? { ok: false, error: 'Unexpected arguments.' }
       : { ok: true, value: extensions.snapshot() };
   });
+  ipcMain.handle(IPC.setRydShowWithDock, async (event, ...args) => {
+    assertShell(event);
+    try {
+      if (args.length !== 1)
+        throw new Error('Expected one RYD visibility flag.');
+      return { ok: true, value: await extensions.setRydShowWithDock(args[0]) };
+    } catch (cause) {
+      return {
+        ok: false,
+        error:
+          cause instanceof Error
+            ? cause.message
+            : 'Could not save RYD settings.',
+      };
+    }
+  });
   ipcMain.handle(IPC.setExtensionEnabled, async (event, ...args) => {
     assertShell(event);
     try {
@@ -718,6 +736,7 @@ export async function createTVWindow(
       IPC.openReturnYouTubeDislike,
       IPC.getExtensions,
       IPC.setExtensionEnabled,
+      IPC.setRydShowWithDock,
       IPC.reloadTV,
       IPC.updateUserAgents,
       IPC.navigate,

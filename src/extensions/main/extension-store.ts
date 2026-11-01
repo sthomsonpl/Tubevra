@@ -6,6 +6,7 @@ import type { ExtensionCommand, ExtensionMetadata } from '../types';
 interface Settings {
   version: 1;
   enabled: Record<string, boolean>;
+  ryd?: { showWithDock: boolean };
 }
 const validId = (id: unknown): id is string =>
   typeof id === 'string' && /^[a-zA-Z0-9:_-]{1,100}$/.test(id);
@@ -41,7 +42,9 @@ export class ExtensionStore {
       object(value);
       if (
         value.version !== 1 ||
-        Object.keys(value).some((key) => !['version', 'enabled'].includes(key))
+        Object.keys(value).some(
+          (key) => !['version', 'enabled', 'ryd'].includes(key),
+        )
       )
         throw new Error('Unsupported extension configuration.');
       object(value.enabled);
@@ -51,7 +54,18 @@ export class ExtensionStore {
         )
       )
         throw new Error('Invalid extension settings.');
+      if (value.ryd !== undefined) {
+        object(value.ryd);
+        if (
+          Object.keys(value.ryd).length !== 1 ||
+          typeof value.ryd.showWithDock !== 'boolean'
+        )
+          throw new Error('Invalid RYD settings.');
+      }
       settings = {
+        ...(value.ryd === undefined
+          ? {}
+          : { ryd: { showWithDock: value.ryd.showWithDock as boolean } }),
         version: 1,
         enabled: value.enabled as Record<string, boolean>,
       };
@@ -73,6 +87,20 @@ export class ExtensionStore {
     }
     return new ExtensionStore(file, settings, registry);
   }
+  rydSettings() {
+    return { showWithDock: this.settings.ryd?.showWithDock ?? true };
+  }
+  setRydShowWithDock(value: unknown): Promise<void> {
+    const operation = this.pending.then(async () => {
+      if (typeof value !== 'boolean')
+        throw new Error('Expected a RYD visibility flag.');
+      const next: Settings = { ...this.settings, ryd: { showWithDock: value } };
+      await this.save(next);
+      this.settings = next;
+    });
+    this.pending = operation.catch(() => {});
+    return operation;
+  }
   enabled(id: string) {
     return Object.hasOwn(this.settings.enabled, id)
       ? this.settings.enabled[id]
@@ -84,6 +112,7 @@ export class ExtensionStore {
       if (!this.registry.some((item) => item.id === command.id))
         throw new Error('Unknown extension.');
       const next: Settings = {
+        ...this.settings,
         version: 1,
         enabled: { ...this.settings.enabled, [command.id]: command.enabled },
       };

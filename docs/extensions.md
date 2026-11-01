@@ -50,7 +50,9 @@ renderer loss and disabling cancel pending work and clear the panel. Late result
 cannot replace the current video's ratings. Each generation permits at most two
 retries for transient errors, respecting cache and server cooldowns.
 
-The local panel accompanies the dock and briefly appears after a video change.
+The local panel briefly appears after a video change. The persisted Show with dock
+preference (enabled by default) additionally reveals it with the dock. Changing
+this preference applies immediately without restarting RYD or fetching ratings.
 Revealing it does not initiate HTTP. See [UI](ui.md), [privacy](../PRIVACY.md)
 and [attribution](../THIRD_PARTY_NOTICES.md).
 

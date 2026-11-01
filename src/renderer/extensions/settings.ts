@@ -1,5 +1,6 @@
 import type { ExtensionsState } from '../../extensions/types';
 import { createWidgetRow, createWidgetToggle } from '../widgets';
+import { createSettingsDialog } from '../settings-dialog';
 import { SPONSORBLOCK_URL, RYD_URL } from '../../shared/api';
 import {
   sponsorAvailability,
@@ -28,6 +29,76 @@ export function mountExtensions(root: HTMLElement) {
   let current: ExtensionsState | null = null;
   let busy = false;
   let operationError = '';
+  const rydContent = document.createElement('div');
+  rydContent.className = 'settings-dialog-content';
+  const rydOption = createWidgetRow(
+    'Show with dock',
+    'When disabled, ratings appear only after a video change.',
+  );
+  const rydToggle = createWidgetToggle('Show with dock', true);
+  rydToggle.input.dataset.controlId = 'ryd-show-with-dock';
+  rydOption.row.append(rydToggle.label);
+  const rydFeedback = document.createElement('p');
+  rydFeedback.className = 'feedback';
+  rydFeedback.setAttribute('role', 'status');
+  rydContent.append(rydOption.row, rydFeedback);
+  let rydSaving = false;
+  const rydSettings = createSettingsDialog(
+    'Return YouTube Dislike',
+    rydContent,
+    {
+      onOpen() {
+        rydToggle.input.checked = current!.ryd.showWithDock;
+        rydFeedback.textContent = '';
+      },
+      onSave() {
+        if (rydSaving) return;
+        void saveRydSettings();
+      },
+    },
+  );
+  rydSettings.button.dataset.controlId = 'ryd-settings';
+  rydSettings.dialog.dataset.extensionId = 'return-youtube-dislike';
+  // Keep the dialog mounted while diagnostic updates rebuild the add-on list.
+  root.append(rydSettings.dialog);
+  rydSettings.dialog
+    .querySelector('form')!
+    .addEventListener('submit', (event) => {
+      event.preventDefault();
+    });
+  rydSettings.dialog.addEventListener('cancel', (event) => {
+    if (rydSaving) event.preventDefault();
+  });
+  rydSettings.dialog.addEventListener('close', () => {
+    rydSettings.button.focus({ preventScroll: true });
+  });
+  async function saveRydSettings() {
+    const enabled = rydToggle.input.checked;
+    rydSaving = true;
+    rydFeedback.textContent = '';
+    rydToggle.input.disabled = true;
+    const buttons = rydSettings.dialog.querySelectorAll('button');
+    buttons.forEach((button) => {
+      button.disabled = true;
+    });
+    try {
+      const result = await window.tubevra.setRydShowWithDock(enabled);
+      if (result.ok) {
+        render(result.value);
+        rydSettings.dialog.close();
+      } else {
+        rydFeedback.textContent = result.error;
+      }
+    } catch {
+      rydFeedback.textContent = 'Cannot communicate with Tubevra.';
+    } finally {
+      rydSaving = false;
+      rydToggle.input.disabled = false;
+      buttons.forEach((button) => {
+        button.disabled = false;
+      });
+    }
+  }
   const labels = {
     disabled: 'Disabled',
     starting: 'Starting…',
@@ -73,7 +144,7 @@ export function mountExtensions(root: HTMLElement) {
     const active = document.activeElement;
     const focusedId =
       active instanceof HTMLElement && list.contains(active)
-        ? active.dataset.extensionId
+        ? (active.dataset.controlId ?? active.dataset.extensionId)
         : undefined;
     const focusedLink = active instanceof HTMLAnchorElement;
     let restoreFocus: HTMLElement | undefined;
@@ -212,6 +283,12 @@ export function mountExtensions(root: HTMLElement) {
           copy.append(privacy);
         }
         copy.append(attribution);
+      }
+      if (item.id === 'return-youtube-dislike') {
+        rydSettings.button.disabled = busy;
+        row.append(rydSettings.button);
+        if (focusedId === 'ryd-settings' && !busy)
+          restoreFocus = rydSettings.button;
       }
       row.append(label);
       list.append(row);
