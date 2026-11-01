@@ -24,7 +24,7 @@ import {
 import type { AppState, Result } from '../shared/api';
 import type { UserAgentStore } from './user-agent-store';
 import { GeneralSettingsStore } from './general-settings-store';
-import { selectTVDisplay } from './tv-display';
+import { resolveTVDisplay, selectTVDisplay } from './tv-display';
 import { connectTVDisplay } from './tv-display-bridge';
 import { createToolbarAutoHide } from './toolbar-auto-hide';
 import { connectOverlayAnimation } from './overlay-animation';
@@ -356,7 +356,7 @@ export async function createTVWindow(
   const displayBridge = connectTVDisplay(
     ipcMain,
     contents,
-    display,
+    resolveTVDisplay(display, general.snapshot().playbackResolution),
     reportError,
   );
 
@@ -582,6 +582,17 @@ export async function createTVWindow(
       };
     }
   });
+  handle(IPC.setPlaybackResolution, async (...args) => {
+    if (args.length !== 1) throw new Error('Expected one playback resolution.');
+    const previous = general.snapshot().playbackResolution;
+    await general.setPlaybackResolution(args[0]);
+    const resolution = general.snapshot().playbackResolution;
+    publish();
+    if (resolution === previous) return;
+    displayBridge.update(resolveTVDisplay(display, resolution));
+    const url = contents.getURL();
+    await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
+  });
   handle(IPC.setHardwareAcceleration, async (...args) => {
     if (args.length !== 1)
       throw new Error('Expected one hardware acceleration flag.');
@@ -732,6 +743,7 @@ export async function createTVWindow(
       IPC.getState,
       IPC.toggleFullscreen,
       IPC.setHardwareAcceleration,
+      IPC.setPlaybackResolution,
       IPC.restartApp,
       IPC.openProjectGitHub,
       IPC.openPrivacyPolicy,

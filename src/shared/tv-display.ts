@@ -1,3 +1,11 @@
+export type PlaybackResolution = 'auto' | '1440p' | '4k' | '8k';
+export function isPlaybackResolution(
+  value: unknown,
+): value is PlaybackResolution {
+  return (
+    value === 'auto' || value === '1440p' || value === '4k' || value === '8k'
+  );
+}
 export interface TVDisplayParameters {
   /** Configured output resolution in physical pixels, not CSS pixels. */
   width: number;

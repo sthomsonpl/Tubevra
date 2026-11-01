@@ -1,6 +1,8 @@
 import type { Display } from 'electron';
 import {
   isTVDisplayParameters,
+  isPlaybackResolution,
+  type PlaybackResolution,
   type TVDisplayParameters,
 } from '../shared/tv-display';
 
@@ -41,4 +43,28 @@ export function selectTVDisplay(
       selected = { id: display.id, data };
   }
   return Object.freeze(selected!.data);
+}
+
+export function resolveTVDisplay(
+  display: Readonly<TVDisplayParameters>,
+  resolution: PlaybackResolution,
+): Readonly<TVDisplayParameters> {
+  if (!isTVDisplayParameters(display) || !isPlaybackResolution(resolution))
+    throw Error('Invalid playback display parameters.');
+  const height =
+    resolution === 'auto'
+      ? display.height
+      : resolution === '1440p'
+        ? 1440
+        : resolution === '4k'
+          ? 2160
+          : 4320;
+  const result = {
+    ...display,
+    height,
+    width: Math.round((display.width * height) / display.height),
+  };
+  if (!isTVDisplayParameters(result))
+    throw Error('Invalid playback display dimensions.');
+  return Object.freeze(result);
 }

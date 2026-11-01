@@ -1,3 +1,4 @@
+import type { PlaybackResolution } from './tv-display';
 import type { ExtensionsState } from '../extensions/types';
 import type { ExtensionCommand } from '../extensions/types';
 
@@ -19,6 +20,7 @@ export type UserAgentCommand =
   | { type: 'remove'; id: string; replacementId?: string };
 
 export interface GeneralSettingsState {
+  playbackResolution: PlaybackResolution;
   hardwareAcceleration: boolean;
   restartRequired: boolean;
 }
@@ -52,6 +54,7 @@ export interface ExtensionsAPI {
 
 export interface TubevraAPI extends ExtensionsAPI {
   toggleFullscreen(): Promise<Result<AppState>>;
+  setPlaybackResolution(value: PlaybackResolution): Promise<Result<AppState>>;
   setHardwareAcceleration(enabled: boolean): Promise<Result<AppState>>;
   restartApp(): Promise<Result<AppState>>;
   openProjectGitHub(): Promise<Result<null>>;
@@ -69,6 +72,7 @@ export interface TubevraAPI extends ExtensionsAPI {
 export const IPC = Object.freeze({
   toggleFullscreen: 'tubevra:toggle-fullscreen',
   setHardwareAcceleration: 'tubevra:set-hardware-acceleration',
+  setPlaybackResolution: 'tubevra:set-playback-resolution',
   restartApp: 'tubevra:restart-app',
   openProjectGitHub: 'tubevra:open-project-github',
   openPrivacyPolicy: 'tubevra:open-privacy-policy',

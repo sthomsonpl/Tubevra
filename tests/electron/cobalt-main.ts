@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, webContents } from 'electron';
+import { app, BrowserWindow, session, webContents, ipcMain } from 'electron';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -33,6 +33,90 @@ app
       .find((c) => c.getURL().startsWith('https://www.youtube.com/tv'))!;
     const shell = BrowserWindow.getAllWindows()[0].webContents;
     const read = () => tv.executeJavaScript('window.firstResults');
+    await shell.executeJavaScript('window.tubevra.setSettingsOpen(true)');
+    const auto = await tv.executeJavaScript(
+      '({width:Math.round(screen.width*devicePixelRatio),height:Math.round(screen.height*devicePixelRatio)})',
+    );
+    for (const [mode, height] of [
+      ['1440p', 1440],
+      ['4k', 2160],
+      ['8k', 4320],
+      ['auto', auto.height],
+    ] as const) {
+      const result = await shell.executeJavaScript(
+        `window.tubevra.setPlaybackResolution('${mode}')`,
+      );
+      assert.equal(result.ok, true);
+      assert.equal(result.value.settingsOpen, true);
+      assert.equal(result.value.general.restartRequired, false);
+      const actual = await tv.executeJavaScript(
+        '({width:Math.round(screen.width*devicePixelRatio),height:Math.round(screen.height*devicePixelRatio)})',
+      );
+      assert.equal(actual.height, height);
+      assert.ok(
+        Math.abs(
+          actual.width - Math.round((auto.width * height) / auto.height),
+        ) <= 2,
+      );
+      assert.equal(
+        await shell.executeJavaScript(
+          'document.querySelector("#playback-resolution").value',
+        ),
+        mode,
+      );
+    }
+    assert.equal(
+      (
+        await shell.executeJavaScript(
+          'window.tubevra.setPlaybackResolution("bad")',
+        )
+      ).ok,
+      false,
+    );
+    await shell.executeJavaScript('window.tubevra.setSettingsOpen(false)');
+    const handler = ipcMain._invokeHandlers.get(
+      'tubevra:set-playback-resolution',
+    );
+    assert.throws(
+      () => handler({ sender: tv, senderFrame: tv.mainFrame }, '4k'),
+      /Untrusted/,
+    );
+    await shell.executeJavaScript('window.tubevra.setSettingsOpen(true)');
+    await shell.executeJavaScript(
+      'document.querySelector("[data-section=general]").click(); const select=document.querySelector("#playback-resolution"); select.value="8k"; select.dispatchEvent(new Event("change",{bubbles:true}));',
+    );
+    for (let i = 0; i < 200; i++) {
+      if (
+        await shell.executeJavaScript(
+          '!document.querySelector("#playback-resolution").disabled',
+        )
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.equal(
+      await shell.executeJavaScript(
+        'document.querySelector("#playback-resolution").value',
+      ),
+      '8k',
+    );
+    assert.equal(
+      (await shell.executeJavaScript('window.tubevra.getState()')).value.general
+        .playbackResolution,
+      '8k',
+    );
+    const win = BrowserWindow.getAllWindows()[0];
+    win.setSize(640, 680);
+    win.show();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    fs.writeFileSync(
+      path.resolve('out/verification/cobalt/resolution-settings.png'),
+      (await shell.capturePage()).toPNG(),
+    );
+    await shell.executeJavaScript(
+      'window.tubevra.setPlaybackResolution("auto")',
+    );
+    await shell.executeJavaScript('window.tubevra.setSettingsOpen(false)');
     const initial = await read();
     assert.equal(initial.absurd, false);
     assert.equal(initial.valid, true);

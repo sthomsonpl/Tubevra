@@ -182,16 +182,19 @@ test('hardware acceleration defaults on, persists across restarts and clears a r
   const { directory } = await fixture(t);
   const store = GeneralSettingsStore.open(directory);
   assert.deepEqual(store.snapshot(), {
+    playbackResolution: 'auto',
     hardwareAcceleration: true,
     restartRequired: false,
   });
   await store.setHardwareAcceleration(false);
   assert.deepEqual(store.snapshot(), {
+    playbackResolution: 'auto',
     hardwareAcceleration: false,
     restartRequired: true,
   });
   const reopened = GeneralSettingsStore.open(directory);
   assert.deepEqual(reopened.snapshot(), {
+    playbackResolution: 'auto',
     hardwareAcceleration: false,
     restartRequired: false,
   });
@@ -200,6 +203,7 @@ test('hardware acceleration defaults on, persists across restarts and clears a r
   await reopened.setHardwareAcceleration(true);
   assert.equal(reopened.snapshot().restartRequired, true);
   assert.deepEqual(GeneralSettingsStore.open(directory).snapshot(), {
+    playbackResolution: 'auto',
     hardwareAcceleration: true,
     restartRequired: false,
   });
@@ -251,6 +255,7 @@ test('a failed general settings write preserves the running preference and recov
   await fs.mkdir(file);
   await assert.rejects(store.setHardwareAcceleration(false));
   assert.deepEqual(store.snapshot(), {
+    playbackResolution: 'auto',
     hardwareAcceleration: true,
     restartRequired: false,
   });
@@ -263,5 +268,53 @@ test('a failed general settings write preserves the running preference and recov
   assert.equal(
     GeneralSettingsStore.open(directory).snapshot().hardwareAcceleration,
     false,
+  );
+});
+
+test('playback resolution migrates old settings and serializes independent preferences', async (t) => {
+  const { directory } = await fixture(t);
+  const file = path.join(directory, 'general-settings.json');
+  await fs.writeFile(
+    file,
+    JSON.stringify({ version: 1, hardwareAcceleration: false }),
+  );
+  const store = GeneralSettingsStore.open(directory);
+  assert.equal(store.snapshot().playbackResolution, 'auto');
+  await Promise.all([
+    store.setPlaybackResolution('8k'),
+    store.setHardwareAcceleration(true),
+  ]);
+  assert.equal(
+    GeneralSettingsStore.open(directory).snapshot().playbackResolution,
+    '8k',
+  );
+  assert.equal(store.snapshot().hardwareAcceleration, true);
+  const saved = await fs.readFile(file, 'utf8');
+  for (const invalid of [null, undefined, {}, [], '4K', 2160])
+    await assert.rejects(store.setPlaybackResolution(invalid));
+  assert.equal(await fs.readFile(file, 'utf8'), saved);
+  await fs.writeFile(
+    file,
+    JSON.stringify({
+      version: 1,
+      hardwareAcceleration: true,
+      playbackResolution: 'invalid',
+    }),
+  );
+  assert.throws(() => GeneralSettingsStore.open(directory), /preserved/);
+});
+
+test('failed resolution persistence preserves the running preference and recovers', async (t) => {
+  const { directory } = await fixture(t);
+  const store = GeneralSettingsStore.open(directory);
+  const file = path.join(directory, 'general-settings.json');
+  await fs.mkdir(file);
+  await assert.rejects(store.setPlaybackResolution('8k'));
+  assert.equal(store.snapshot().playbackResolution, 'auto');
+  await fs.rmdir(file);
+  await store.setPlaybackResolution('1440p');
+  assert.equal(
+    GeneralSettingsStore.open(directory).snapshot().playbackResolution,
+    '1440p',
   );
 });

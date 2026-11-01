@@ -85,3 +85,7 @@ atomic replacement and recovery. Run `npm run typecheck` and `npm run test:core`
 Tests use disposable directories under the OS temporary directory, never the
 user's application data. A sandbox that forbids renaming temporary files can
 prevent the tests from running; it must not be worked around in application code.
+
+## Playback resolution
+
+General settings persist `playbackResolution` (`auto`, `1440p`, `4k`, `8k`). Existing version-1 files without this field use `auto`. Auto retains the largest detected physical display at window creation. Manual modes use a height of 1440, 2160 or 4320 physical pixels and a rounded width preserving that display’s aspect ratio. The native viewport and DPR remain unchanged. Screen, player configuration and Cobalt compatibility share the same dimensions. Validated local-shell IPC saves the preference, updates the bootstrap snapshot and reloads the current TV document; settings stay open. Reload errors remain visible and do not undo a committed preference.

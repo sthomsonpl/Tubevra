@@ -1,10 +1,11 @@
 # Changes — Unreleased
 
 ### Added
--added(RYD): settings with an option to show ratings only after video changes.
-
+-Added an RYD setting to show ratings only when the video changes.
+-Added playback resolution options: Auto, 1440p, 4K, and 8K. Manual modes preserve the monitor's aspect ratio and allow resolutions above its native resolution.
 ### Changed
 
 
 ### Fixed
--Fixed playback at 60 fps and resolutions above 720p for some videos in TV Mode.
+-Fixed playback issues affecting some videos at 60 FPS and resolutions above 720p in TV Mode.
+

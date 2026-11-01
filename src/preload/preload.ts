@@ -5,6 +5,8 @@ import type { ExtensionsState } from '../extensions/types';
 
 const api: TubevraAPI = {
   toggleFullscreen: () => ipcRenderer.invoke(IPC.toggleFullscreen),
+  setPlaybackResolution: (value) =>
+    ipcRenderer.invoke(IPC.setPlaybackResolution, value),
   setHardwareAcceleration: (enabled) =>
     ipcRenderer.invoke(IPC.setHardwareAcceleration, enabled),
   restartApp: () => ipcRenderer.invoke(IPC.restartApp),

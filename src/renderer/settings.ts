@@ -215,6 +215,18 @@ export function mountSettings(root: HTMLElement) {
               </div>
               <div class="widget-row">
                 <span class="row-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+                </span>
+                <div class="row-copy"><label for="playback-resolution"><strong>Playback resolution</strong></label></div>
+                <select id="playback-resolution" class="playback-resolution">
+                  <option value="auto">Auto</option>
+                  <option value="1440p">1440p</option>
+                  <option value="4k">2160p (4K)</option>
+                  <option value="8k">4320p (8K)</option>
+                </select>
+              </div>
+              <div class="widget-row">
+                <span class="row-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                 </span>
                 <div class="row-copy">
@@ -426,6 +438,9 @@ export function mountSettings(root: HTMLElement) {
     element<HTMLButtonElement>('delete-preset').disabled = busy || dirty;
     element<HTMLButtonElement>('done').disabled = busy;
     element<HTMLButtonElement>('reload-home').disabled = busy;
+    const resolution = element<HTMLSelectElement>('playback-resolution');
+    resolution.disabled = busy || !current;
+    resolution.value = current?.general.playbackResolution ?? 'auto';
     hardwareAcceleration.input.disabled = busy || !current;
     hardwareAcceleration.input.checked =
       current?.general.hardwareAcceleration ?? true;
@@ -670,6 +685,25 @@ export function mountSettings(root: HTMLElement) {
   element('reload-home').addEventListener('click', () => {
     void run(() => window.tubevra.navigate('home'));
   });
+  element<HTMLSelectElement>('playback-resolution').addEventListener(
+    'change',
+    () => {
+      const value = element<HTMLSelectElement>('playback-resolution').value;
+      if (
+        value !== 'auto' &&
+        value !== '1440p' &&
+        value !== '4k' &&
+        value !== '8k'
+      )
+        return;
+      void run(
+        () => window.tubevra.setPlaybackResolution(value),
+        undefined,
+        '',
+        element('general-feedback'),
+      );
+    },
+  );
   hardwareAcceleration.input.addEventListener('change', () => {
     const enabled = hardwareAcceleration.input.checked;
     void run(
