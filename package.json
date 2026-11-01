@@ -9,6 +9,8 @@
   "license": "GPL-3.0-only",
   "main": ".vite/build/main.cjs",
   "scripts": {
+    "test:cobalt": "node --test tests/cobalt-media-capabilities.test.cjs",
+    "test:cobalt:electron": "node tests/build-cobalt.mjs && node tests/electron/run.cjs cobalt-smoke",
     "postinstall": "node build/patch-packager.mjs",
     "test:ryd": "node --test tests/ryd.test.cjs tests/toolbar-motion.test.cjs",
     "test:ryd:packaged": "node tests/packaged-hooks.mjs --ryd",

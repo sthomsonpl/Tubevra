@@ -685,6 +685,9 @@ export async function createTVWindow(
   contents.on('render-process-gone', (_event, details) => {
     reportError(`YouTube renderer stopped: ${details.reason}`);
   });
+  contents.on('preload-error', (_event, _preloadPath, cause) => {
+    reportError(`YouTube preload failed: ${cause.message}`);
+  });
   const guardTVNavigation = (event: Electron.Event, url: string) => {
     if (!isTVURL(url)) {
       event.preventDefault();

@@ -3,10 +3,12 @@ import { ipcRenderer } from 'electron';
 import { IPC } from '../shared/api';
 import { installTVScreen } from './tv-screen';
 import { installTVPlayerDisplay } from './tv-player-display';
+import { installCobaltMediaCapabilities } from './cobalt-media-capabilities';
 
 // Install both display corrections before YouTube creates its first player.
 installTVScreen();
 installTVPlayerDisplay();
+installCobaltMediaCapabilities();
 
 // This isolated preload exposes no application API to YouTube.
 let composing = false;

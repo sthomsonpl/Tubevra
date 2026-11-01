@@ -7,4 +7,4 @@
 
 
 ### Fixed
-
+-Fixed playback at 60 fps and resolutions above 720p for some videos in TV Mode.
