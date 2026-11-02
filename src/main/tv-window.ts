@@ -24,8 +24,11 @@ import {
 import type { AppState, Result } from '../shared/api';
 import type { UserAgentStore } from './user-agent-store';
 import { GeneralSettingsStore } from './general-settings-store';
-import { selectTVDisplay } from './tv-display';
+import { resolveTVDisplay, selectTVDisplay } from './tv-display';
 import { connectTVDisplay } from './tv-display-bridge';
+import { createHardwareCodecDetector } from './media-capabilities';
+import { connectHardwareCodecs } from './media-capabilities-bridge';
+import { hasCobaltUserAgent } from '../shared/media-capabilities';
 import { createToolbarAutoHide } from './toolbar-auto-hide';
 import { connectOverlayAnimation } from './overlay-animation';
 import { TOOLBAR_STYLE } from './toolbar-style';
@@ -230,6 +233,7 @@ export async function createTVWindow(
   mainWindow.contentView.on('bounds-changed', resize);
 
   let error: string | null = null;
+  let codecWarning: string | null = null;
   let playbackFullscreen = false;
   let settingsOpen = false;
   let loading = true;
@@ -242,6 +246,7 @@ export async function createTVWindow(
       !playbackFullscreen &&
       mainWindow.isVisible() &&
       !mainWindow.isMinimized();
+    ratings.setShowWithDock(extensions.snapshot().ryd.showWithDock);
     ratings.setAllowed(allowed);
     overlays.refresh();
   };
@@ -272,6 +277,7 @@ export async function createTVWindow(
     settingsOpen,
     loading,
     error,
+    codecWarning,
   });
   const publish = () => {
     if (!mainWindow.isDestroyed()) {
@@ -291,6 +297,7 @@ export async function createTVWindow(
   const pageBridge = connectPage(ipcMain, contents, extensions);
   notifyExtensions = () => {
     ratings.refresh();
+    updateRatings();
     publish();
     if (!mainWindow.isDestroyed())
       mainWindow.webContents.send(
@@ -354,9 +361,29 @@ export async function createTVWindow(
   const displayBridge = connectTVDisplay(
     ipcMain,
     contents,
-    display,
+    resolveTVDisplay(display, general.snapshot().playbackResolution),
     reportError,
   );
+  const codecDetector = createHardwareCodecDetector();
+  const warnCodecs = (message: string) => {
+    codecWarning = message;
+    publish();
+  };
+  const codecBridge = connectHardwareCodecs(ipcMain, contents, warnCodecs);
+  const onChildProcessGone = (
+    _event: Electron.Event,
+    details: Electron.Details,
+  ) => {
+    if (details.type !== 'GPU') return;
+    codecDetector.invalidate();
+    if (hasCobaltUserAgent(store.activeUserAgent())) {
+      const message =
+        'Hardware codec filtering unavailable: GPU process stopped. Reload YouTube to retry.';
+      codecBridge.update({ status: 'error', error: message });
+      warnCodecs(message);
+    }
+  };
+  app.on('child-process-gone', onChildProcessGone);
 
   function assertShell(event: IpcMainInvokeEvent) {
     const sender = event.sender;
@@ -382,6 +409,18 @@ export async function createTVWindow(
     syncVisibility();
     publish();
     try {
+      codecWarning = null;
+      codecBridge.update(undefined);
+      if (hasCobaltUserAgent(store.activeUserAgent())) {
+        const codecs = await codecDetector.detect();
+        if (mainWindow.isDestroyed() || contents.isDestroyed()) return;
+        codecBridge.update(codecs);
+        if (codecs.status === 'error')
+          warnCodecs(
+            `Hardware codec filtering unavailable: ${codecs.error} Native codec support will be used.`,
+          );
+      }
+      if (mainWindow.isDestroyed() || contents.isDestroyed()) return;
       if (reload) {
         // loadURL can perform only a same-document navigation for a hash route.
         // Hooks need a new document; reload retains the current URL, UA and session.
@@ -548,6 +587,22 @@ export async function createTVWindow(
       ? { ok: false, error: 'Unexpected arguments.' }
       : { ok: true, value: extensions.snapshot() };
   });
+  ipcMain.handle(IPC.setRydShowWithDock, async (event, ...args) => {
+    assertShell(event);
+    try {
+      if (args.length !== 1)
+        throw new Error('Expected one RYD visibility flag.');
+      return { ok: true, value: await extensions.setRydShowWithDock(args[0]) };
+    } catch (cause) {
+      return {
+        ok: false,
+        error:
+          cause instanceof Error
+            ? cause.message
+            : 'Could not save RYD settings.',
+      };
+    }
+  });
   ipcMain.handle(IPC.setExtensionEnabled, async (event, ...args) => {
     assertShell(event);
     try {
@@ -563,6 +618,17 @@ export async function createTVWindow(
             : 'Extension operation failed.',
       };
     }
+  });
+  handle(IPC.setPlaybackResolution, async (...args) => {
+    if (args.length !== 1) throw new Error('Expected one playback resolution.');
+    const previous = general.snapshot().playbackResolution;
+    await general.setPlaybackResolution(args[0]);
+    const resolution = general.snapshot().playbackResolution;
+    publish();
+    if (resolution === previous) return;
+    displayBridge.update(resolveTVDisplay(display, resolution));
+    const url = contents.getURL();
+    await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
   });
   handle(IPC.setHardwareAcceleration, async (...args) => {
     if (args.length !== 1)
@@ -667,6 +733,9 @@ export async function createTVWindow(
   contents.on('render-process-gone', (_event, details) => {
     reportError(`YouTube renderer stopped: ${details.reason}`);
   });
+  contents.on('preload-error', (_event, _preloadPath, cause) => {
+    reportError(`YouTube preload failed: ${cause.message}`);
+  });
   const guardTVNavigation = (event: Electron.Event, url: string) => {
     if (!isTVURL(url)) {
       event.preventDefault();
@@ -703,6 +772,9 @@ export async function createTVWindow(
     dock.dispose();
     ratings.dispose();
     displayBridge.dispose();
+    codecBridge.dispose();
+    codecDetector.dispose();
+    app.removeListener('child-process-gone', onChildProcessGone);
     pageBridge.dispose();
     void extensions
       .dispose()
@@ -711,6 +783,7 @@ export async function createTVWindow(
       IPC.getState,
       IPC.toggleFullscreen,
       IPC.setHardwareAcceleration,
+      IPC.setPlaybackResolution,
       IPC.restartApp,
       IPC.openProjectGitHub,
       IPC.openPrivacyPolicy,
@@ -718,6 +791,7 @@ export async function createTVWindow(
       IPC.openReturnYouTubeDislike,
       IPC.getExtensions,
       IPC.setExtensionEnabled,
+      IPC.setRydShowWithDock,
       IPC.reloadTV,
       IPC.updateUserAgents,
       IPC.navigate,

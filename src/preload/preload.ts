@@ -5,6 +5,8 @@ import type { ExtensionsState } from '../extensions/types';
 
 const api: TubevraAPI = {
   toggleFullscreen: () => ipcRenderer.invoke(IPC.toggleFullscreen),
+  setPlaybackResolution: (value) =>
+    ipcRenderer.invoke(IPC.setPlaybackResolution, value),
   setHardwareAcceleration: (enabled) =>
     ipcRenderer.invoke(IPC.setHardwareAcceleration, enabled),
   restartApp: () => ipcRenderer.invoke(IPC.restartApp),
@@ -14,6 +16,8 @@ const api: TubevraAPI = {
   openReturnYouTubeDislike: () =>
     ipcRenderer.invoke(IPC.openReturnYouTubeDislike),
   reloadTV: () => ipcRenderer.invoke(IPC.reloadTV),
+  setRydShowWithDock: (enabled) =>
+    ipcRenderer.invoke(IPC.setRydShowWithDock, enabled),
   getExtensions: () => ipcRenderer.invoke(IPC.getExtensions),
   setExtensionEnabled: (command) =>
     ipcRenderer.invoke(IPC.setExtensionEnabled, command),

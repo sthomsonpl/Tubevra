@@ -518,6 +518,88 @@ void app
         !dockView.getVisible() &&
         !panelView.getVisible(),
     );
+    const requestsBeforePreference = requested.length;
+    await local.executeJavaScript('window.tubevra.setSettingsOpen(true)');
+    await local.executeJavaScript(
+      `document.querySelector('[data-section="extensions"]').click(); document.querySelector('[data-control-id="ryd-settings"]').click()`,
+    );
+    assert.equal(
+      await local.executeJavaScript(
+        `document.querySelector('dialog[open]')?.dataset.extensionId`,
+      ),
+      'return-youtube-dislike',
+    );
+    await local.executeJavaScript(
+      `document.querySelector('[data-control-id="ryd-show-with-dock"]').click()`,
+    );
+    await local.executeJavaScript(
+      `document.querySelector('dialog[open] button.secondary').click()`,
+    );
+    await wait(
+      async () =>
+        await local.executeJavaScript(
+          "document.activeElement.dataset.controlId === 'ryd-settings'",
+        ),
+    );
+    assert.equal(
+      await local.executeJavaScript(
+        'window.tubevra.getExtensions().then(r => r.value.ryd.showWithDock)',
+      ),
+      true,
+    );
+    await local.executeJavaScript(
+      `document.querySelector('[data-control-id="ryd-settings"]').click()`,
+    );
+    assert.equal(
+      await local.executeJavaScript(
+        `document.querySelector('[data-control-id="ryd-show-with-dock"]').checked`,
+      ),
+      true,
+    );
+    fs.writeFileSync(
+      path.join(output, 'ryd-settings.png'),
+      (await local.capturePage()).toPNG(),
+    );
+    await local.executeJavaScript(
+      `document.querySelector('[data-control-id="ryd-show-with-dock"]').click(); document.querySelector('dialog[open] button.primary').click()`,
+    );
+    await wait(
+      async () =>
+        await local.executeJavaScript(
+          'window.tubevra.getExtensions().then(r => r.value.ryd.showWithDock === false)',
+        ),
+    );
+    await wait(
+      async () =>
+        await local.executeJavaScript(
+          "!document.querySelector('dialog[open]')",
+        ),
+    );
+    await local.executeJavaScript('window.tubevra.setSettingsOpen(false)');
+    reveal();
+    await wait(() => dockView.getVisible());
+    await delay(600);
+    assert.equal(
+      panelView.getVisible(),
+      false,
+      'video-only panel stays hidden with dock',
+    );
+    assert.equal(
+      requested.length,
+      requestsBeforePreference,
+      'preference creates no request',
+    );
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(profile, 'extensions.json'), 'utf8'))
+        .ryd.showWithDock,
+      false,
+    );
+    const invalidPreference = await local.executeJavaScript(
+      "window.tubevra.setRydShowWithDock('false')",
+    );
+    assert.equal(invalidPreference.ok, false);
+    cursor = { x: -10000, y: -10000 };
+    await wait(() => !dockView.getVisible() && !animation.getVisible());
     holdNext = true;
     await remote.executeJavaScript(
       `model.id='abcdefghijk';history.replaceState(null,'','#/watch?v='+model.id)`,

@@ -79,6 +79,7 @@ const verification = app.whenReady().then(async () => {
   await waitFor(() => gpuUpdated);
   const enabled = stage !== 'disabled';
   assert.deepEqual((await state()).general, {
+    playbackResolution: 'auto',
     hardwareAcceleration: enabled,
     restartRequired: false,
   });

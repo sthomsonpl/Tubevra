@@ -126,10 +126,19 @@ export class TubervaExtensions {
   }
   snapshot(): ExtensionsState {
     return structuredClone({
+      ryd: this.store.rydSettings(),
       revision: this.revision,
       stateVersion: this.stateVersion,
       error: this.runtimeError,
       items: this.items,
+    });
+  }
+  setRydShowWithDock(value: unknown) {
+    return this.enqueue(async () => {
+      if (this.closed) throw new Error('Extension engine is closed.');
+      await this.store.setRydShowWithDock(value);
+      this.publishState();
+      return this.snapshot();
     });
   }
   update(input: unknown) {

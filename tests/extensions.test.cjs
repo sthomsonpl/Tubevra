@@ -605,3 +605,47 @@ test('coordinator ignores old instances and preserves simultaneous failure and r
   assert.equal(engine.snapshot().items[0].status, 'error');
   await engine.dispose();
 });
+
+test('RYD preference persists, preserves enablement and rejects invalid writes', async (t) => {
+  const dir = await directory(t);
+  const store = await ExtensionStore.open(dir, registry);
+  assert.equal(store.rydSettings().showWithDock, true);
+  await Promise.all([
+    store.setRydShowWithDock(false),
+    store.update({ id: 'sample', enabled: true }),
+  ]);
+  assert.equal(
+    (await ExtensionStore.open(dir, registry)).rydSettings().showWithDock,
+    false,
+  );
+  assert.equal(store.enabled('sample'), true);
+  await assert.rejects(store.setRydShowWithDock('false'));
+  const save = store.save;
+  store.save = async () => {
+    throw Error('write failed');
+  };
+  await assert.rejects(store.setRydShowWithDock(true), /write failed/);
+  assert.equal(store.rydSettings().showWithDock, false);
+  store.save = save;
+  const file = path.join(dir, 'extensions.json');
+  const invalid = JSON.stringify({
+    version: 1,
+    enabled: {},
+    ryd: { showWithDock: 'false' },
+  });
+  await fs.writeFile(file, invalid);
+  await assert.rejects(ExtensionStore.open(dir, registry), /preserved/);
+  assert.equal(await fs.readFile(file, 'utf8'), invalid);
+});
+
+test('RYD preference updates publish state without changing authority or restarting services', async (t) => {
+  const dir = await directory(t);
+  const engine = await TubervaExtensions.open(dir, registry, source(), {});
+  t.after(() => engine.dispose());
+  const before = engine.snapshot();
+  const after = await engine.setRydShowWithDock(false);
+  assert.equal(after.revision, before.revision);
+  assert.ok(after.stateVersion > before.stateVersion);
+  assert.deepEqual(after.items, before.items);
+  assert.equal(after.ryd.showWithDock, false);
+});

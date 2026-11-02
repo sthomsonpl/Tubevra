@@ -369,3 +369,41 @@ test('RYD popup policy works without a dock, native view or its own timer', (t) 
   policy.update({ version: 3, generation: 2, kind: 'no-video' }, false, 16000);
   assert.equal(policy.request(16000, true, false, false).allowed, false);
 });
+
+test('RYD video-only policy ignores dock and holds hovered popup even with dock visible', () => {
+  const policy = createRatingsVisibility();
+  policy.setShowWithDock(false);
+  policy.update(
+    {
+      version: 1,
+      generation: 1,
+      kind: 'ready',
+      videoId: 'AAAAAAAAAAA',
+      likes: 1,
+      dislikes: 2,
+    },
+    true,
+    0,
+  );
+  assert.equal(policy.request(3999, true, false, false).visible, true);
+  assert.equal(policy.request(4000, true, false, false).visible, false);
+  policy.setShowWithDock(true);
+  assert.equal(policy.request(5000, true, false, false).visible, true);
+  policy.setShowWithDock(false);
+  assert.equal(policy.request(5000, true, false, false).visible, false);
+  policy.update(
+    { version: 2, generation: 2, kind: 'loading', videoId: 'BBBBBBBBBBB' },
+    true,
+    6000,
+  );
+  assert.equal(policy.request(20000, false, false, false).visible, true);
+  policy.update(
+    { version: 3, generation: 2, kind: 'empty', videoId: 'BBBBBBBBBBB' },
+    true,
+    20000,
+  );
+  assert.equal(policy.request(23999, true, true, false).visible, true);
+  assert.equal(policy.request(24000, true, false, false).visible, true);
+  assert.equal(policy.request(26000, true, false, false).visible, false);
+  assert.equal(policy.request(26000, true, false, true).visible, false);
+});

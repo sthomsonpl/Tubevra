@@ -2,9 +2,11 @@
 
 [![Czytaj po polsku](https://img.shields.io/badge/PL-Czytaj_po_polsku-2563eb?style=for-the-badge&labelColor=18181b)](readme_pl.md)
 
-An unofficial YouTube client built with Electron and TypeScript for Windows, macOS and Linux.
+An unofficial YouTube TV (Leanback, `youtube.com/tv`) client built with Electron and TypeScript for Windows, macOS and Linux.
 
 Still in early development.
+
+Currently, the application supports **TV Mode**. An additional **Desktop Mode**, using the standard YouTube interface (`youtube.com`), is planned for the future.
 
 ## Features
 

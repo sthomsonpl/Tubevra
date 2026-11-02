@@ -1,3 +1,4 @@
+import type { PlaybackResolution } from './tv-display';
 import type { ExtensionsState } from '../extensions/types';
 import type { ExtensionCommand } from '../extensions/types';
 
@@ -19,6 +20,7 @@ export type UserAgentCommand =
   | { type: 'remove'; id: string; replacementId?: string };
 
 export interface GeneralSettingsState {
+  playbackResolution: PlaybackResolution;
   hardwareAcceleration: boolean;
   restartRequired: boolean;
 }
@@ -34,12 +36,14 @@ export interface AppState {
   settingsOpen: boolean;
   loading: boolean;
   error: string | null;
+  codecWarning: string | null;
 }
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 // Narrow operations exposed only to the trusted local application UI.
 export interface ExtensionsAPI {
+  setRydShowWithDock(enabled: boolean): Promise<Result<ExtensionsState>>;
   getExtensions(): Promise<Result<ExtensionsState>>;
   setExtensionEnabled(
     command: ExtensionCommand,
@@ -51,6 +55,7 @@ export interface ExtensionsAPI {
 
 export interface TubevraAPI extends ExtensionsAPI {
   toggleFullscreen(): Promise<Result<AppState>>;
+  setPlaybackResolution(value: PlaybackResolution): Promise<Result<AppState>>;
   setHardwareAcceleration(enabled: boolean): Promise<Result<AppState>>;
   restartApp(): Promise<Result<AppState>>;
   openProjectGitHub(): Promise<Result<null>>;
@@ -68,6 +73,7 @@ export interface TubevraAPI extends ExtensionsAPI {
 export const IPC = Object.freeze({
   toggleFullscreen: 'tubevra:toggle-fullscreen',
   setHardwareAcceleration: 'tubevra:set-hardware-acceleration',
+  setPlaybackResolution: 'tubevra:set-playback-resolution',
   restartApp: 'tubevra:restart-app',
   openProjectGitHub: 'tubevra:open-project-github',
   openPrivacyPolicy: 'tubevra:open-privacy-policy',
@@ -81,6 +87,7 @@ export const IPC = Object.freeze({
   stateChanged: 'tubevra:state-changed',
   requestTVBack: 'tubevra:request-tv-back',
   dispatchTVBack: 'tubevra:dispatch-tv-back',
+  setRydShowWithDock: 'tubevra:ryd:set-show-with-dock',
   getExtensions: 'tubevra:extensions:get',
   setExtensionEnabled: 'tubevra:extensions:set-enabled',
   extensionsStateChanged: 'tubevra:extensions:state-changed',

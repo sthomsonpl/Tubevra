@@ -26,6 +26,7 @@ export interface ExtensionState extends ExtensionMetadata {
   diagnostics?: { main?: ExtensionDiagnostics; page?: ExtensionDiagnostics };
 }
 export interface ExtensionsState {
+  ryd: { showWithDock: boolean };
   revision: number;
   stateVersion: number;
   error: string | null;

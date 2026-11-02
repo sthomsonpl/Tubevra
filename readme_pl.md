@@ -2,14 +2,16 @@
 
 [![Read in English](https://img.shields.io/badge/EN-Read_in_English-2563eb?style=for-the-badge&labelColor=18181b)](readme.md)
 
-Nieoficjalny klient YouTube oparty na Electron i TypeScript, na Windows, macOS i Linux.
+Nieoficjalny klient YouTube TV (Leanback, `youtube.com/tv`) oparty na Electron i TypeScript, na Windows, macOS i Linux.
 
 Projekt na wczesnym etapie rozwoju.
+
+Obecnie aplikacja obsługuje **TV Mode**. W przyszłości planowany jest również **Desktop Mode**, korzystający ze standardowego interfejsu YouTube (`youtube.com`).
 
 ## Funkcje
 
 - **Adblock** — blokuje reklamy w YouTube TV. Reklamy w Shorts nie są jeszcze obsługiwane.
-- **SponsorBlock** — automatycznie pomija segmenty sponsorowane w YouTube TV; domyślnie wyłączony. Uses SponsorBlock data from [https://sponsor.ajay.app/](https://sponsor.ajay.app/).
+- **SponsorBlock** — automatycznie pomija segmenty sponsorowane w YouTube TV; domyślnie wyłączony. Korzysta z danych [SponsorBlock](https://sponsor.ajay.app/).
 
 - **Return YouTube Dislike** — szacunkowe liczby Like/Dislike w lokalnym panelu TV; domyślnie wyłączony. [Źródło danych](https://returnyoutubedislike.com/).
 

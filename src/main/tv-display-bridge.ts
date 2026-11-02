@@ -15,7 +15,7 @@ export function connectTVDisplay(
   if (!isTVDisplayParameters(parameters))
     throw Error('Invalid TV display bootstrap parameters.');
   // Own the snapshot: changes to a caller's object cannot change this view.
-  const snapshot = Object.freeze({ ...parameters });
+  let snapshot = Object.freeze({ ...parameters });
   const trusted = (event: IpcMainEvent) =>
     !contents.isDestroyed() &&
     event.sender === contents &&
@@ -55,6 +55,11 @@ export function connectTVDisplay(
   ipc.on(TV_DISPLAY_IPC.bootstrap, bootstrap);
   ipc.on(TV_DISPLAY_IPC.failure, failure);
   return {
+    update(parameters: Readonly<TVDisplayParameters>) {
+      if (!isTVDisplayParameters(parameters))
+        throw Error('Invalid TV display bootstrap parameters.');
+      snapshot = Object.freeze({ ...parameters });
+    },
     dispose() {
       ipc.removeListener(TV_DISPLAY_IPC.bootstrap, bootstrap);
       ipc.removeListener(TV_DISPLAY_IPC.failure, failure);

@@ -7,6 +7,7 @@ const task = process.argv[2];
 if (
   ![
     'ryd-smoke',
+    'cobalt-smoke',
     'adblock-smoke',
     'ui-smoke',
     'hardware-smoke',
@@ -37,6 +38,8 @@ const rydResult = path.resolve('out/verification/ryd/result.json');
 if (task === 'ryd-smoke') fs.rmSync(rydResult, { force: true });
 const adblockResult = path.resolve('out/verification/adblock/result.json');
 if (task === 'adblock-smoke') fs.rmSync(adblockResult, { force: true });
+const cobaltResult = path.resolve('out/verification/cobalt/result.json');
+if (task === 'cobalt-smoke') fs.rmSync(cobaltResult, { force: true });
 try {
   if (task === 'hardware-smoke') {
     for (const stage of ['default', 'disabled', 'enabled']) {
@@ -66,14 +69,23 @@ try {
     const result = spawnSync(
       require('electron'),
       [
-        task === 'ryd-smoke'
-          ? path.resolve(__dirname, '../../out/verification/ryd/build/main.cjs')
+        task === 'ryd-smoke' || task === 'cobalt-smoke'
+          ? path.resolve(
+              __dirname,
+              `../../out/verification/${task === 'cobalt-smoke' ? 'cobalt' : 'ryd'}/build/main.cjs`,
+            )
           : path.join(__dirname, `${task}.cjs`),
       ],
       { env, stdio: 'inherit', timeout: 90000 },
     );
-    if (result.error) console.error(result.error.message);
+    if (result.error) throw result.error;
     process.exitCode = result.status ?? 1;
+    if (
+      task === 'cobalt-smoke' &&
+      (!fs.existsSync(cobaltResult) ||
+        JSON.parse(fs.readFileSync(cobaltResult, 'utf8')).passed !== true)
+    )
+      throw Error('Cobalt test did not complete its assertions.');
     if (
       task === 'ryd-smoke' &&
       (!fs.existsSync(rydResult) ||

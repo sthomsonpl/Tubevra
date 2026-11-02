@@ -196,3 +196,44 @@ test('unsupported player configuration is rejected and reported', () => {
   assert.equal(invoked, false);
   assert.match(control.takeError(), /compatibility failed/);
 });
+
+test('manual resolution preserves physical monitor aspect ratios and DPI', () => {
+  const { resolveTVDisplay } = require('../src/main/tv-display.ts');
+  for (const [width, height, dpi] of [
+    [1920, 1080, 1],
+    [3440, 1440, 1.25],
+    [5120, 2160, 2],
+    [5120, 1440, 1.5],
+    [1080, 1920, 1],
+  ]) {
+    const display = { width, height, scaleFactor: dpi };
+    assert.deepEqual(resolveTVDisplay(display, 'auto'), display);
+    for (const [mode, target] of [
+      ['1440p', 1440],
+      ['4k', 2160],
+      ['8k', 4320],
+    ]) {
+      const result = resolveTVDisplay(display, mode);
+      assert.equal(result.height, target);
+      assert.equal(result.width, Math.round((width * target) / height));
+      assert.equal(result.scaleFactor, dpi);
+    }
+  }
+  assert.throws(() => resolveTVDisplay(output, 'invalid'));
+});
+test('display bridge updates validated owned snapshots for the next document', () => {
+  const ipc = new EventEmitter();
+  const contents = {
+    mainFrame: { url: 'https://www.youtube.com/tv' },
+    isDestroyed: () => false,
+  };
+  const bridge = connectTVDisplay(ipc, contents, output, () => {});
+  const next = { width: 10240, height: 4320, scaleFactor: 2 };
+  bridge.update(next);
+  next.width = 1;
+  const event = { sender: contents, senderFrame: contents.mainFrame };
+  ipc.emit(TV_DISPLAY_IPC.bootstrap, event);
+  assert.equal(event.returnValue.value.width, 10240);
+  assert.throws(() => bridge.update({ width: 0, height: 1, scaleFactor: 1 }));
+  bridge.dispose();
+});

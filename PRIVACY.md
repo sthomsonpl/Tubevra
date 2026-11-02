@@ -28,6 +28,12 @@ Google's use of this information, including analytics, advertising, retention an
 international transfers, follows the [Google Privacy Policy](https://policies.google.com/privacy)
 and your account settings. Adblock does not guarantee protection from tracking.
 
+## Adblock
+
+Adblock is enabled by default. It filters recognized YouTube TV ad data locally,
+without sending data to an additional service or downloading filter lists.
+Disable it in Add-ons; reload if prompted to restore already modified responses.
+
 ## SponsorBlock
 
 SponsorBlock is **disabled by default**. When enabled, Tubevra fetches sponsor
@@ -101,4 +107,6 @@ Disable the extension to stop requests. See [attribution](THIRD_PARTY_NOTICES.md
 
 The local ratings panel displays the existing RYD result with the dock and briefly
 after a confirmed change of video.
+You can disable Show with dock in Add-ons to show the panel only after a video change.
+This locally saved preference does not stop rating downloads; disable RYD to stop requests.
 Showing or hiding it does not create additional RYD requests or transmit its contents.

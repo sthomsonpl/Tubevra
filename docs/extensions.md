@@ -38,6 +38,27 @@ Test modules live in tests/fixtures/extensions/ and use the same build mechanism
 with a separate catalog. Run npm run test:extensions, npm run test:runtime and
 the Electron integration scripts to verify changes.
 
+## Adblock
+
+Enabled by default in TV mode. Removes recognized player ad data and marked
+feed ad slots locally; Shorts ads are not supported. No external blocking
+service or filter-list downloads are used. Disabling after responses have been
+modified requires a reload to restore the original data.
+
+Run `npm run test:adblock`, `npm run test:adblock:electron` and, after packaging,
+`npm run test:adblock:packaged` (Windows x64). Fixtures do not verify live YouTube compatibility.
+
+## SponsorBlock
+
+Disabled by default in TV mode. Skips segments in the `sponsor` category using
+SponsorBlock data. Requests send a four-character SHA-256 video ID prefix through
+an isolated session; full IDs are matched locally. Results stay in RAM; no votes
+or skip statistics are sent. See [privacy](../PRIVACY.md) and
+[attribution](../THIRD_PARTY_NOTICES.md).
+
+Run `npm run test:sponsorblock` and, after packaging,
+`npm run test:sponsorblock:packaged` (Windows x64). Fixtures do not verify live YouTube compatibility.
+
 ## Return YouTube Dislike
 
 Disabled by default and available in TV mode. The adapter confirms the watch route
@@ -50,7 +71,9 @@ renderer loss and disabling cancel pending work and clear the panel. Late result
 cannot replace the current video's ratings. Each generation permits at most two
 retries for transient errors, respecting cache and server cooldowns.
 
-The local panel accompanies the dock and briefly appears after a video change.
+The local panel briefly appears after a video change. The persisted Show with dock
+preference (enabled by default) additionally reveals it with the dock. Changing
+this preference applies immediately without restarting RYD or fetching ratings.
 Revealing it does not initiate HTTP. See [UI](ui.md), [privacy](../PRIVACY.md)
 and [attribution](../THIRD_PARTY_NOTICES.md).
 
