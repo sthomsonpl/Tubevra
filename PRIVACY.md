@@ -28,6 +28,12 @@ Google's use of this information, including analytics, advertising, retention an
 international transfers, follows the [Google Privacy Policy](https://policies.google.com/privacy)
 and your account settings. Adblock does not guarantee protection from tracking.
 
+## Adblock
+
+Adblock is enabled by default. It filters recognized YouTube TV ad data locally,
+without sending data to an additional service or downloading filter lists.
+Disable it in Add-ons; reload if prompted to restore already modified responses.
+
 ## SponsorBlock
 
 SponsorBlock is **disabled by default**. When enabled, Tubevra fetches sponsor

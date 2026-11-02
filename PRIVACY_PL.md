@@ -30,6 +30,13 @@ przechowywania i przekazywanie danych za granicę, opisuje
 [polityka prywatności Google](https://policies.google.com/privacy).
 Znaczenie mają też ustawienia konta. Adblock nie gwarantuje ochrony przed śledzeniem.
 
+## Adblock
+
+Adblock jest domyślnie włączony. Filtruje rozpoznane dane reklam YouTube TV
+lokalnie, bez wysyłania danych do dodatkowej usługi ani pobierania list filtrów.
+Możesz go wyłączyć w Add-ons; jeśli pojawi się komunikat, przeładuj stronę,
+aby przywrócić wcześniej zmodyfikowane odpowiedzi.
+
 ## SponsorBlock
 
 SponsorBlock jest **domyślnie wyłączony**. Po jego włączeniu Tubevra pobiera
