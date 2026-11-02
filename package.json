@@ -9,6 +9,8 @@
   "license": "GPL-3.0-only",
   "main": ".vite/build/main.cjs",
   "scripts": {
+    "test:codecs": "node --test tests/hardware-codecs.test.cjs",
+    "test:codecs:electron": "node tests/electron/codecs-smoke.cjs",
     "test:cobalt": "node --test tests/cobalt-media-capabilities.test.cjs",
     "test:cobalt:electron": "node tests/build-cobalt.mjs && node tests/electron/run.cjs cobalt-smoke",
     "postinstall": "node build/patch-packager.mjs",

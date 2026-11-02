@@ -8,4 +8,4 @@
 
 ### Fixed
 -Fixed playback issues affecting some videos at 60 FPS and resolutions above 720p in TV Mode.
-
+-Fixed Cobalt selecting video codecs that the GPU cannot decode in hardware.

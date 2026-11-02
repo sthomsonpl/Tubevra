@@ -573,8 +573,9 @@ export function mountSettings(root: HTMLElement) {
       state.error ??
       (state.loading ? 'Connecting to YouTube TV…' : 'Ready to watch.');
     element<HTMLButtonElement>('retry').disabled = state.loading || busy;
-    element('service-error').hidden = !state.error;
-    element('service-error').textContent = state.error ?? '';
+    element('service-error').hidden = !(state.error || state.codecWarning);
+    element('service-error').textContent =
+      state.error ?? state.codecWarning ?? '';
     element('loading-note').textContent = state.loading
       ? 'Reloading…'
       : 'TV Mode';

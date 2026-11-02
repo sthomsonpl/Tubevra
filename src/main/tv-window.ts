@@ -26,6 +26,9 @@ import type { UserAgentStore } from './user-agent-store';
 import { GeneralSettingsStore } from './general-settings-store';
 import { resolveTVDisplay, selectTVDisplay } from './tv-display';
 import { connectTVDisplay } from './tv-display-bridge';
+import { createHardwareCodecDetector } from './media-capabilities';
+import { connectHardwareCodecs } from './media-capabilities-bridge';
+import { hasCobaltUserAgent } from '../shared/media-capabilities';
 import { createToolbarAutoHide } from './toolbar-auto-hide';
 import { connectOverlayAnimation } from './overlay-animation';
 import { TOOLBAR_STYLE } from './toolbar-style';
@@ -230,6 +233,7 @@ export async function createTVWindow(
   mainWindow.contentView.on('bounds-changed', resize);
 
   let error: string | null = null;
+  let codecWarning: string | null = null;
   let playbackFullscreen = false;
   let settingsOpen = false;
   let loading = true;
@@ -273,6 +277,7 @@ export async function createTVWindow(
     settingsOpen,
     loading,
     error,
+    codecWarning,
   });
   const publish = () => {
     if (!mainWindow.isDestroyed()) {
@@ -359,6 +364,26 @@ export async function createTVWindow(
     resolveTVDisplay(display, general.snapshot().playbackResolution),
     reportError,
   );
+  const codecDetector = createHardwareCodecDetector();
+  const warnCodecs = (message: string) => {
+    codecWarning = message;
+    publish();
+  };
+  const codecBridge = connectHardwareCodecs(ipcMain, contents, warnCodecs);
+  const onChildProcessGone = (
+    _event: Electron.Event,
+    details: Electron.Details,
+  ) => {
+    if (details.type !== 'GPU') return;
+    codecDetector.invalidate();
+    if (hasCobaltUserAgent(store.activeUserAgent())) {
+      const message =
+        'Hardware codec filtering unavailable: GPU process stopped. Reload YouTube to retry.';
+      codecBridge.update({ status: 'error', error: message });
+      warnCodecs(message);
+    }
+  };
+  app.on('child-process-gone', onChildProcessGone);
 
   function assertShell(event: IpcMainInvokeEvent) {
     const sender = event.sender;
@@ -384,6 +409,18 @@ export async function createTVWindow(
     syncVisibility();
     publish();
     try {
+      codecWarning = null;
+      codecBridge.update(undefined);
+      if (hasCobaltUserAgent(store.activeUserAgent())) {
+        const codecs = await codecDetector.detect();
+        if (mainWindow.isDestroyed() || contents.isDestroyed()) return;
+        codecBridge.update(codecs);
+        if (codecs.status === 'error')
+          warnCodecs(
+            `Hardware codec filtering unavailable: ${codecs.error} Native codec support will be used.`,
+          );
+      }
+      if (mainWindow.isDestroyed() || contents.isDestroyed()) return;
       if (reload) {
         // loadURL can perform only a same-document navigation for a hash route.
         // Hooks need a new document; reload retains the current URL, UA and session.
@@ -735,6 +772,9 @@ export async function createTVWindow(
     dock.dispose();
     ratings.dispose();
     displayBridge.dispose();
+    codecBridge.dispose();
+    codecDetector.dispose();
+    app.removeListener('child-process-gone', onChildProcessGone);
     pageBridge.dispose();
     void extensions
       .dispose()

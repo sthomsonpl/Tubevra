@@ -8,8 +8,25 @@ import {
 } from '../../src/preload/cobalt-media-capabilities';
 import { createTVWindow } from '../../src/main/tv-window';
 import { UserAgentStore } from '../../src/main/user-agent-store';
+import {
+  HARDWARE_CODECS_IPC,
+  isHardwareCodecSnapshot,
+} from '../../src/shared/media-capabilities';
 if (!process.env.TUBEVRA_TEST_PROFILE) throw Error('Use isolated runner');
 app.setPath('userData', process.env.TUBEVRA_TEST_PROFILE);
+app.on('window-all-closed', () => {});
+if (process.env.TUBEVRA_TEST_DISABLE_ACCELERATION === '1') {
+  app.disableHardwareAcceleration();
+  fs.mkdirSync(app.getPath('userData'), { recursive: true });
+  fs.writeFileSync(
+    path.join(app.getPath('userData'), 'general-settings.json'),
+    JSON.stringify({
+      version: 1,
+      hardwareAcceleration: false,
+      playbackResolution: 'auto',
+    }),
+  );
+}
 const resultFile = path.resolve('out/verification/cobalt/result.json');
 fs.mkdirSync(path.dirname(resultFile), { recursive: true });
 const started = Date.now();
@@ -22,17 +39,131 @@ app
       (request) =>
         new Response(
           `<!doctype html><script>
- window.firstResults={ua:navigator.userAgent,absurd:MediaSource.isTypeSupported('video/webm;codecs="vp9";framerate=9999'),valid:MediaSource.isTypeSupported('video/webm;codecs="vp9";framerate=59.94'),codec:MediaSource.isTypeSupported('video/webm;codecs="nonexistent";width=640'),node:typeof require};
+ window.firstResults={ua:navigator.userAgent,hardwareCodecs:window.__testCodecBootstrap,av1:MediaSource.isTypeSupported('video/mp4;codecs="av01.0.13M.08";width=640;framerate=30'),vp9profile2:MediaSource.isTypeSupported('video/mp4;codecs="vp09.02.51.10";width=640'),absurd:MediaSource.isTypeSupported('video/webm;codecs="vp9";framerate=9999'),valid:MediaSource.isTypeSupported('video/webm;codecs="vp9";framerate=59.94'),codec:MediaSource.isTypeSupported('video/webm;codecs="nonexistent";width=640'),node:typeof require};
  </script><h1>Local Cobalt compatibility fixture</h1>${request.url.endsWith('/frame') ? '' : '<iframe src="https://www.youtube.com/tv/frame"></iframe>'}`,
           { headers: { 'Content-Type': 'text/html' } },
         ),
     );
+    const getGPUInfo = app.getGPUInfo.bind(app);
+    let codecProbes = 0;
+    app.getGPUInfo = (type) => {
+      codecProbes++;
+      if (codecProbes === 1)
+        return Promise.reject(Error('Forced codec discovery failure'));
+      return getGPUInfo(type);
+    };
     await createTVWindow(await UserAgentStore.open(app.getPath('userData')));
     const tv = webContents
       .getAllWebContents()
       .find((c) => c.getURL().startsWith('https://www.youtube.com/tv'))!;
     const shell = BrowserWindow.getAllWindows()[0].webContents;
     const read = () => tv.executeJavaScript('window.firstResults');
+    const nativeAV1 = await shell.executeJavaScript(
+      `MediaSource.isTypeSupported('video/mp4;codecs="av01.0.13M.08"')`,
+    );
+    const assertHardwareFiltering = async () => {
+      const current = await read();
+      const hardware = current.hardwareCodecs;
+      assert.equal(
+        current.av1,
+        nativeAV1 &&
+          (hardware?.status !== 'ready' ||
+            hardware.profiles.includes('av1 profile main')),
+      );
+      const nativeVP9 = await shell.executeJavaScript(
+        `MediaSource.isTypeSupported('video/mp4;codecs="vp09.02.51.10"')`,
+      );
+      assert.equal(
+        current.vp9profile2,
+        nativeVP9 &&
+          (hardware?.status !== 'ready' ||
+            hardware.profiles.includes('vp9 profile2')),
+      );
+    };
+    if (process.env.TUBEVRA_TEST_DISABLE_ACCELERATION === '1') {
+      assert.equal((await read()).hardwareCodecs.status, 'disabled');
+      await assertHardwareFiltering();
+      assert.equal(codecProbes, 0);
+      await shell.executeJavaScript(
+        'window.tubevra.setHardwareAcceleration(true)',
+      );
+      await shell.executeJavaScript('window.tubevra.reloadTV()');
+      const state = (await shell.executeJavaScript('window.tubevra.getState()'))
+        .value;
+      assert.equal(state.general.restartRequired, true);
+      assert.equal(state.codecWarning, null);
+      assert.equal(state.error, null);
+      assert.equal((await read()).hardwareCodecs.status, 'disabled');
+      assert.equal(codecProbes, 0);
+      fs.writeFileSync(
+        resultFile,
+        JSON.stringify({
+          passed: true,
+          checks: [
+            'disabled startup bootstrap, pending restart preserves disabled runtime, no GPU probe',
+          ],
+        }),
+      );
+      console.log('Cobalt disabled startup bootstrap passed');
+      app.exit(0);
+      return;
+    }
+    const failedBootstrap = await read();
+    await assertHardwareFiltering();
+    assert.equal(failedBootstrap.hardwareCodecs.status, 'error');
+    const fallbackState = (
+      await shell.executeJavaScript('window.tubevra.getState()')
+    ).value;
+    assert.equal(fallbackState.loading, false);
+    assert.equal(fallbackState.error, null);
+    assert.match(fallbackState.codecWarning, /Forced codec discovery failure/);
+    assert.match(
+      await shell.executeJavaScript(
+        'document.querySelector("#service-error").textContent',
+      ),
+      /Native codec support/,
+    );
+    assert.equal(
+      (await shell.executeJavaScript('window.tubevra.reloadTV()')).ok,
+      true,
+    );
+    assert.equal((await read()).hardwareCodecs.status, 'ready');
+    await assertHardwareFiltering();
+    assert.ok(isHardwareCodecSnapshot((await read()).hardwareCodecs));
+    assert.equal(
+      (await shell.executeJavaScript('window.tubevra.getState()')).value
+        .codecWarning,
+      null,
+    );
+    assert.equal(codecProbes, 2);
+    assert.equal(
+      await tv.mainFrame.frames[0].executeJavaScript(
+        'window.firstResults.hardwareCodecs == null',
+      ),
+      true,
+    );
+    // Wrong frame and local shell must not be able to read the bootstrap.
+    for (const event of [
+      { sender: shell, senderFrame: shell.mainFrame },
+      { sender: tv, senderFrame: tv.mainFrame.frames[0] },
+    ]) {
+      ipcMain.emit(HARDWARE_CODECS_IPC.bootstrap, event);
+      assert.equal((event as any).returnValue.ok, false);
+    }
+    // Saved preference awaiting restart must not change the current runtime snapshot.
+    await shell.executeJavaScript(
+      'window.tubevra.setHardwareAcceleration(false)',
+    );
+    await shell.executeJavaScript('window.tubevra.reloadTV()');
+    assert.equal((await read()).hardwareCodecs.status, 'ready');
+    assert.equal(
+      (await shell.executeJavaScript('window.tubevra.getState()')).value.general
+        .restartRequired,
+      true,
+    );
+    await shell.executeJavaScript(
+      'window.tubevra.setHardwareAcceleration(true)',
+    );
     await shell.executeJavaScript('window.tubevra.setSettingsOpen(true)');
     const auto = await tv.executeJavaScript(
       '({width:Math.round(screen.width*devicePixelRatio),height:Math.round(screen.height*devicePixelRatio)})',
@@ -109,15 +240,29 @@ app
     win.setSize(640, 680);
     win.show();
     await new Promise((resolve) => setTimeout(resolve, 400));
-    fs.writeFileSync(
-      path.resolve('out/verification/cobalt/resolution-settings.png'),
-      (await shell.capturePage()).toPNG(),
-    );
+    if (process.env.TUBEVRA_TEST_SKIP_CAPTURE === '1')
+      console.warn(
+        'Settings screenshot explicitly skipped; layout capture remains unverified.',
+      );
+    else
+      fs.writeFileSync(
+        path.resolve('out/verification/cobalt/resolution-settings.png'),
+        (
+          await shell.capturePage().catch((cause) => {
+            throw Error(`Settings screenshot failed: ${String(cause)}`);
+          })
+        ).toPNG(),
+      );
     await shell.executeJavaScript(
       'window.tubevra.setPlaybackResolution("auto")',
     );
     await shell.executeJavaScript('window.tubevra.setSettingsOpen(false)');
     const initial = await read();
+    assert.equal(
+      codecProbes,
+      2,
+      'resolution changes must reuse profile discovery',
+    );
     assert.equal(initial.absurd, false);
     assert.equal(initial.valid, true);
     assert.equal(initial.codec, false);
@@ -140,6 +285,11 @@ app
       );
       assert.equal(result.ok, true);
       assert.equal((await read()).absurd, id === 'lg_webos');
+      await assertHardwareFiltering();
+      assert.equal(
+        (await read()).hardwareCodecs?.status,
+        id === 'lg_webos' ? undefined : 'ready',
+      );
     }
     const added = await shell.executeJavaScript(
       `window.tubevra.updateUserAgents({type:'add',name:'Custom Cobalt',userAgent:'Custom cobalt/27'})`,
@@ -152,6 +302,27 @@ app
       `window.tubevra.updateUserAgents({type:'select',id:${JSON.stringify(custom)}})`,
     );
     assert.equal((await read()).absurd, false);
+    assert.equal(codecProbes, 2, 'UA transitions must reuse profile discovery');
+    const concurrent = await shell.executeJavaScript(`Promise.all([
+      window.tubevra.setPlaybackResolution('4k'),
+      window.tubevra.updateUserAgents({type:'select',id:'lg_webos'})
+    ])`);
+    assert.ok(concurrent.every((result: any) => result.ok));
+    assert.equal((await read()).hardwareCodecs, undefined);
+    await shell.executeJavaScript(
+      `window.tubevra.updateUserAgents({type:'select',id:${JSON.stringify(custom)}})`,
+    );
+    assert.equal((await read()).hardwareCodecs.status, 'ready');
+    assert.equal(codecProbes, 2);
+    app.emit('child-process-gone', {}, { type: 'GPU' });
+    assert.match(
+      (await shell.executeJavaScript('window.tubevra.getState()')).value
+        .codecWarning,
+      /GPU process stopped/,
+    );
+    await shell.executeJavaScript('window.tubevra.reloadTV()');
+    assert.equal((await read()).hardwareCodecs.status, 'ready');
+    assert.equal(codecProbes, 3, 'GPU loss must invalidate cached discovery');
     const failurePreload = path.join(
       app.getPath('userData'),
       'failure-preload.cjs',
@@ -197,13 +368,22 @@ app
       tv.reload();
     });
     assert.equal((await read()).absurd, false);
+    BrowserWindow.getAllWindows()
+      .find((window) => window.webContents === shell)!
+      .destroy();
+    assert.equal(ipcMain.listenerCount(HARDWARE_CODECS_IPC.bootstrap), 0);
+    assert.equal(ipcMain.listenerCount(HARDWARE_CODECS_IPC.failure), 0);
     fs.writeFileSync(
       resultFile,
       JSON.stringify({
         passed: true,
+        screenshotSkipped: process.env.TUBEVRA_TEST_SKIP_CAPTURE === '1',
         elapsedMs: Date.now() - started,
         checks: [
           'first page script',
+          'native AV1/VP9 profile filtering and error/disabled fallback before first page script',
+          'hardware codec bootstrap before first script, failure/retry and GPU invalidation',
+          'runtime acceleration independent of pending preference, cached UA/resolution transitions',
           'native codec rejection',
           'UA transitions and custom UA',
           'reload',

@@ -36,6 +36,7 @@ export interface AppState {
   settingsOpen: boolean;
   loading: boolean;
   error: string | null;
+  codecWarning: string | null;
 }
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };

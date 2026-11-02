@@ -8,7 +8,7 @@ for (const [entry, filename] of [
   ['tests/electron/cobalt-main.ts', 'main.cjs'],
   ['src/preload/preload.ts', 'preload.cjs'],
   ['src/preload/ratings-preload.ts', 'ratings-preload.cjs'],
-  ['src/preload/tv-preload.ts', 'tv-preload.cjs'],
+  ['tests/electron/cobalt-preload.ts', 'tv-preload.cjs'],
 ]) {
   await build({
     configFile: false,
