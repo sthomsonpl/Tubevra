@@ -111,7 +111,16 @@ app
     win.setAlwaysOnTop(true);
     win.show();
     win.focus();
-    const shell = win.webContents;
+    const shell = await waitFor(
+      () =>
+        win.contentView.children.find(
+          (view) =>
+            view.webContents &&
+            view.webContents.getURL().startsWith('file:') &&
+            !view.webContents.getURL().includes('#'),
+        )?.webContents,
+      'local settings surface',
+    );
     const toolbar = await waitFor(
       () =>
         webContents
@@ -764,6 +773,35 @@ app
 
     await click(toolbar, 'settings');
     await waitFor(async () => (await state()).settingsOpen, 'settings open');
+    const brandImages = await shell.executeJavaScript(
+      '[...document.querySelectorAll(".brand-mark img")].map(img => img.complete && img.naturalWidth > 0)',
+    );
+    assert.deepEqual(brandImages, [true, true], 'packaged Tubevra icons load');
+    const localView = win.contentView.children.find(
+      (view) => view.webContents === shell,
+    );
+    const tvView = win.contentView.children.find(
+      (view) => view.webContents === tv,
+    );
+    assert.equal(localView.getVisible(), true);
+    assert.equal(
+      tvView.getVisible(),
+      true,
+      'live YouTube remains below the glass',
+    );
+    assert.ok(
+      win.contentView.children.indexOf(localView) >
+        win.contentView.children.indexOf(tvView),
+    );
+    assert.equal(
+      await shell.executeJavaScript(
+        'document.body.classList.contains("glass-active")',
+      ),
+      true,
+    );
+    checks.push(
+      'settings glass sits above live YouTube in a separate native view',
+    );
     await shell.executeJavaScript(
       `document.querySelector('[data-section="about"]').click()`,
     );
@@ -889,7 +927,9 @@ app
       customName,
     );
     assert.equal(
-      await shell.executeJavaScript('document.querySelectorAll("img").length'),
+      await shell.executeJavaScript(
+        'document.querySelectorAll("img:not(.brand-mark img)").length',
+      ),
       0,
     );
     await click(shell, 'apply-preset');
@@ -995,6 +1035,12 @@ app
 
     await click(shell, 'done');
     await waitFor(async () => !(await state()).settingsOpen, 'settings closed');
+    assert.equal(
+      localView.getVisible(),
+      false,
+      'closed settings do not intercept TV input',
+    );
+    assert.equal(tvView.getVisible(), true);
     // Resizing the test window can change native focus on Windows.
     win.focus();
     tv.focus();

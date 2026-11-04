@@ -68,7 +68,6 @@ export async function createTVWindow(
     minHeight: 540,
     icon: path.join(app.getAppPath(), 'assets', 'icon', 'icon.ico'),
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
@@ -119,6 +118,22 @@ export async function createTVWindow(
   youtube.setVisible(false);
   contents.setUserAgent(store.activeUserAgent());
   mainWindow.contentView.addChildView(youtube);
+  // A native sibling surface blurs live YouTube without remote DOM changes.
+  const local = new WebContentsView({
+    webPreferences: {
+      // Keep the local surface painting when returning from its hidden state.
+      backgroundThrottling: false,
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
+    },
+  });
+  local.setBackgroundColor('#2412161d');
+  local.setBackgroundBlur(18);
+  mainWindow.contentView.addChildView(local);
   // Local DOM z-index cannot rise above a sibling native view. Keep the local
   // overlay in its own small surface so the rest of YouTube receives input.
   const toolbarURL = `${shellURL}#toolbar`;
@@ -145,7 +160,7 @@ export async function createTVWindow(
     () => updateRatings(),
   );
   for (const surface of [
-    mainWindow.webContents,
+    local.webContents,
     contents,
     toolbar.webContents,
     ratings.view.webContents,
@@ -173,7 +188,7 @@ export async function createTVWindow(
     mainWindow,
     toolbar,
     () => {
-      if (settingsOpen || error || loading) mainWindow.webContents.focus();
+      if (settingsOpen || error || loading) local.webContents.focus();
       else contents.focus();
     },
     () => refreshOverlays(),
@@ -222,6 +237,7 @@ export async function createTVWindow(
   const resize = () => {
     const { width, height } = mainWindow.contentView.getBounds();
     youtube.setBounds({ x: 0, y: 0, width, height });
+    local.setBounds({ x: 0, y: 0, width, height });
     dock.layout();
     ratings.layout(toolbar.getBounds());
     overlays.layout();
@@ -281,7 +297,7 @@ export async function createTVWindow(
   });
   const publish = () => {
     if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(IPC.stateChanged, state());
+      local.webContents.send(IPC.stateChanged, state());
       if (!toolbar.webContents.isDestroyed())
         toolbar.webContents.send(IPC.stateChanged, state());
     }
@@ -289,7 +305,8 @@ export async function createTVWindow(
   const syncVisibility = () => {
     // Extension errors are separate from YouTube load errors.
     if (mainWindow.isDestroyed()) return;
-    youtube.setVisible(!settingsOpen && !error && !loading);
+    youtube.setVisible(!error && !loading);
+    local.setVisible(settingsOpen || !!error || loading);
     updateRatings();
     dock.setPinned(settingsOpen || !!error || loading);
     overlays.setSuppressed(playbackFullscreen);
@@ -300,10 +317,7 @@ export async function createTVWindow(
     updateRatings();
     publish();
     if (!mainWindow.isDestroyed())
-      mainWindow.webContents.send(
-        IPC.extensionsStateChanged,
-        extensions.snapshot(),
-      );
+      local.webContents.send(IPC.extensionsStateChanged, extensions.snapshot());
     pageBridge.publish();
   };
   const reportError = (message: string) => {
@@ -388,7 +402,7 @@ export async function createTVWindow(
   function assertShell(event: IpcMainInvokeEvent) {
     const sender = event.sender;
     const expectedURL =
-      sender === mainWindow.webContents
+      sender === local.webContents
         ? shellURL
         : sender === toolbar.webContents
           ? toolbarURL
@@ -660,7 +674,7 @@ export async function createTVWindow(
     settingsOpen = args[0];
     syncVisibility();
     publish();
-    if (settingsOpen || error) mainWindow.webContents.focus();
+    if (settingsOpen || error) local.webContents.focus();
     else contents.focus();
     return { ok: true, value: state() };
   });
@@ -754,18 +768,18 @@ export async function createTVWindow(
     );
     return { action: 'deny' };
   });
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  local.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   toolbar.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   toolbar.webContents.on('will-navigate', (event, url) => {
     if (url !== toolbarURL) event.preventDefault();
   });
-  mainWindow.webContents.on('will-navigate', (event, url) => {
+  local.webContents.on('will-navigate', (event, url) => {
     if (url !== shellURL) event.preventDefault();
   });
-  mainWindow.webContents.session.setPermissionRequestHandler(
+  local.webContents.session.setPermissionRequestHandler(
     (_contents, _permission, callback) => callback(false),
   );
-  mainWindow.webContents.session.setPermissionCheckHandler(() => false);
+  local.webContents.session.setPermissionCheckHandler(() => false);
 
   mainWindow.on('closed', () => {
     overlays.dispose();
@@ -800,11 +814,12 @@ export async function createTVWindow(
       ipcMain.removeHandler(channel);
     ipcMain.removeListener(IPC.dispatchTVBack, dispatchBack);
     // Closing the parent does not automatically close a child WebContentsView.
+    if (!local.webContents.isDestroyed()) local.webContents.close();
     if (!contents.isDestroyed()) contents.close();
     if (!toolbar.webContents.isDestroyed()) toolbar.webContents.close();
   });
   await Promise.all([
-    mainWindow.loadURL(shellURL),
+    local.webContents.loadURL(shellURL),
     ratings.load(),
     toolbar.webContents.loadURL(toolbarURL),
   ]);

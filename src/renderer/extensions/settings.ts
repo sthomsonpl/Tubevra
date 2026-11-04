@@ -22,7 +22,7 @@ export function mountExtensions(root: HTMLElement) {
   empty.hidden = true;
   const reload = document.createElement('button');
   reload.type = 'button';
-  reload.className = 'secondary';
+  reload.className = 'secondary reload-action';
   reload.textContent = 'Reload YouTube TV';
   reload.hidden = true;
   root.append(feedback, empty, list, reload);

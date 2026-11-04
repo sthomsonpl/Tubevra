@@ -2,7 +2,7 @@
 
 ## Local surfaces and blur
 
-The application shell owns the settings and loading/error screens. YouTube
+A dedicated local `WebContentsView` owns the settings and loading/error screens. YouTube
 remains a separate sandboxed `WebContentsView`. The toolbar is another local
 `WebContentsView` using the same local page at `#toolbar`, above the YouTube view.
 No Tubevra DOM, styles or Shadow DOM are inserted into YouTube.
@@ -11,7 +11,7 @@ CSS `z-index` in the application shell cannot place its DOM above a native
 sibling view. The actual toolbar therefore occupies a bounded 400 × 68 DIP
 native surface, centred 20 DIP above the content area's bottom edge. Bounds are
 updated from the root view's `bounds-changed` event, including native menu layout
-changes. There is no full-window transparent input overlay or mouse forwarding.
+changes. During playback there is no full-window transparent input overlay or mouse forwarding.
 As documented by Electron, the rounded cut-out corners still belong to the
 rectangular native hit area; all of this area stays within the toolbar footprint.
 
@@ -22,8 +22,8 @@ local CSS highlights. This blurs the real content underneath, without screenshot
 duplicated video or an opaque imitation. Application windows are not made always-on-top in production.
 
 HTML fullscreen in the YouTube view hides the native toolbar, including its hit
-area. Exiting fullscreen restores it. Opening settings hides YouTube, pins the
-dock and focuses the local shell; closing settings restores the TV view. A
+area. Exiting fullscreen restores it. Opening settings shows the local view above live YouTube, pins the
+dock and focuses the local shell; closing settings hides the local view and restores TV focus. A
 change of UA while settings are open does not steal the form's focus.
 
 The dock contains Back, Home, Fullscreen and Settings. Fullscreen toggles the native
@@ -40,6 +40,13 @@ focus inside an already active window. Cursor detection uses screen coordinates:
 a covering window can cause the dock to reveal underneath it, while retaining
 focus. Minimized/hidden windows and HTML playback fullscreen keep it hidden.
 Keyboard navigation keeps the dock visible only while Tubevra is active.
+
+The settings surface uses native background blur (radius 18) and translucent
+local CSS surfaces with subtle highlights. It covers the content area while
+settings are open, so pointer input cannot reach YouTube. Outside settings it is
+hidden unless a loading/error screen is needed; these retain an opaque backdrop.
+The dock stays above settings. Local settings IPC validates the dedicated view's
+WebContents, main frame and exact URL. Closing the window closes this view too.
 
 ## Settings behaviour
 

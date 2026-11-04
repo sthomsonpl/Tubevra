@@ -3,6 +3,8 @@ import { PROJECT_GITHUB_URL, PRIVACY_POLICY_URL } from '../shared/api';
 import { mountExtensions } from './extensions/settings';
 import { createWidgetToggle } from './widgets';
 
+const tubevraIcon = new URL('../../assets/icon/icon.ico', import.meta.url).href;
+
 type SectionId = 'general' | 'tv' | 'user-agents' | 'extensions' | 'about';
 type PresetTab = 'default' | 'user';
 
@@ -77,7 +79,7 @@ export function mountSettings(root: HTMLElement) {
       <div class="connection-card">
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="13" rx="3"/><path d="m10 9.5 5 3-5 3v-6Z"/><path d="M8 21h8"/></svg>
+            <img src="${tubevraIcon}" alt="" width="28" height="28" />
           </span>
           <span class="brand-text">Tubevra</span>
           <span class="brand-pill">TV Mode</span>
@@ -97,7 +99,7 @@ export function mountSettings(root: HTMLElement) {
           <div class="sidebar-top">
             <div class="brand">
               <span class="brand-mark" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="13" rx="3"/><path d="m10 9.5 5 3-5 3v-6Z"/><path d="M8 21h8"/></svg>
+                <img src="${tubevraIcon}" alt="" width="28" height="28" />
               </span>
               <div class="brand-copy">
                 <span class="brand-text">Tubevra</span>
@@ -233,7 +235,7 @@ export function mountSettings(root: HTMLElement) {
                   <strong>Reload YouTube TV</strong>
                   <p>Reload the main Leanback interface while keeping your session</p>
                 </div>
-                <button id="reload-home" class="secondary compact-btn" type="button">Reload</button>
+                <button id="reload-home" class="secondary compact-btn reload-action" type="button">Reload</button>
               </div>
             </div>
             <p id="general-feedback" class="feedback" role="status" aria-live="polite"></p>
@@ -561,6 +563,7 @@ export function mountSettings(root: HTMLElement) {
   function render(state: AppState) {
     const wasOpen = current?.settingsOpen;
     current = state;
+    document.body.classList.toggle('glass-active', state.settingsOpen);
     element('general-restart').hidden = !state.general.restartRequired;
     element('app-version').textContent = state.version;
     extensions.render(state.extensions);

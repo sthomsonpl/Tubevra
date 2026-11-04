@@ -3,6 +3,7 @@
 const {
   app,
   BrowserWindow,
+  desktopCapturer,
   session,
   webContents,
   ipcMain,
@@ -65,7 +66,19 @@ const verification = app.whenReady().then(async () => {
       }),
   );
   const win = await waitFor(() => BrowserWindow.getAllWindows()[0]);
-  const shell = win.webContents;
+  // Paint native sibling surfaces from startup, as in ui-smoke.
+  win.setAlwaysOnTop(true);
+  win.show();
+  win.focus();
+  const shell = await waitFor(
+    () =>
+      win.contentView.children.find(
+        (view) =>
+          view.webContents &&
+          view.webContents.getURL().startsWith('file:') &&
+          !view.webContents.getURL().includes('#'),
+      )?.webContents,
+  );
   await waitFor(
     async () =>
       shell.getURL() &&
@@ -199,6 +212,8 @@ const verification = app.whenReady().then(async () => {
         [640, 680],
       ]) {
         win.setSize(width, height);
+        // Keep the native surfaces painted while capturing, as in ui-smoke.
+        win.setAlwaysOnTop(true);
         win.show();
         win.focus();
         await waitFor(() =>
@@ -229,9 +244,18 @@ const verification = app.whenReady().then(async () => {
           ),
           false,
         );
+        // Capture the composed native window, including the local sibling view.
+        const sources = await desktopCapturer.getSources({
+          types: ['window'],
+          thumbnailSize: { width: width * 2, height: height * 2 },
+        });
+        const source = sources.find(
+          (entry) => entry.id === win.getMediaSourceId(),
+        );
+        assert.ok(source, 'settings window is available for capture');
         fs.writeFileSync(
           path.join(output, `general-${width}.png`),
-          (await shell.capturePage()).toPNG(),
+          source.thumbnail.toPNG(),
         );
       }
     }

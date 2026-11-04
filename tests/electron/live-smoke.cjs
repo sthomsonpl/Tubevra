@@ -18,7 +18,13 @@ app
       if (win) {
         win.show();
         win.focus();
-        const shell = win.webContents;
+        const shell = win.contentView.children.find(
+          (view) =>
+            view.webContents &&
+            view.webContents.getURL().startsWith('file:') &&
+            !view.webContents.getURL().includes('#'),
+        )?.webContents;
+        if (!shell) continue;
         const result = await shell
           .executeJavaScript('window.tubevra?.getState()')
           .catch(() => null);
