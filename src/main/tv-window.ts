@@ -33,6 +33,7 @@ import { createToolbarAutoHide } from './toolbar-auto-hide';
 import { connectOverlayAnimation } from './overlay-animation';
 import { TOOLBAR_STYLE } from './toolbar-style';
 import { createRatingsPanel } from './ratings-panel';
+import { createExtensionSettingsView } from './extension-settings-view';
 
 const TV_HOME = 'https://www.youtube.com/tv';
 
@@ -159,11 +160,24 @@ export async function createTVWindow(
     extensions,
     () => updateRatings(),
   );
+  const extensionSettings = createExtensionSettingsView(
+    mainWindow,
+    local.webContents,
+    shellURL,
+    {
+      canOpen: () => settingsOpen && !playbackFullscreen,
+      getPreference: () => extensions.snapshot().ryd.showWithDock,
+      savePreference: (value) => extensions.setRydShowWithDock(value),
+      onVisibility: (open) =>
+        overlays.setSuppressed(playbackFullscreen || open),
+    },
+  );
   for (const surface of [
     local.webContents,
     contents,
     toolbar.webContents,
     ratings.view.webContents,
+    extensionSettings.view.webContents,
   ]) {
     surface.on('before-input-event', (event, input) => {
       if (
@@ -188,7 +202,9 @@ export async function createTVWindow(
     mainWindow,
     toolbar,
     () => {
-      if (settingsOpen || error || loading) local.webContents.focus();
+      if (extensionSettings.isOpen())
+        extensionSettings.view.webContents.focus();
+      else if (settingsOpen || error || loading) local.webContents.focus();
       else contents.focus();
     },
     () => refreshOverlays(),
@@ -238,6 +254,7 @@ export async function createTVWindow(
     const { width, height } = mainWindow.contentView.getBounds();
     youtube.setBounds({ x: 0, y: 0, width, height });
     local.setBounds({ x: 0, y: 0, width, height });
+    extensionSettings.layout();
     dock.layout();
     ratings.layout(toolbar.getBounds());
     overlays.layout();
@@ -307,9 +324,10 @@ export async function createTVWindow(
     if (mainWindow.isDestroyed()) return;
     youtube.setVisible(!error && !loading);
     local.setVisible(settingsOpen || !!error || loading);
+    if (!settingsOpen) extensionSettings.close(true);
     updateRatings();
     dock.setPinned(settingsOpen || !!error || loading);
-    overlays.setSuppressed(playbackFullscreen);
+    overlays.setSuppressed(playbackFullscreen || extensionSettings.isOpen());
   };
   const pageBridge = connectPage(ipcMain, contents, extensions);
   notifyExtensions = () => {
@@ -785,6 +803,7 @@ export async function createTVWindow(
     overlays.dispose();
     dock.dispose();
     ratings.dispose();
+    extensionSettings.dispose();
     displayBridge.dispose();
     codecBridge.dispose();
     codecDetector.dispose();

@@ -2,6 +2,23 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/api';
 import type { AppState, TubevraAPI } from '../shared/api';
 import type { ExtensionsState } from '../extensions/types';
+import {
+  EXTENSION_SETTINGS_IPC,
+  type ExtensionSettingsHostAPI,
+} from '../shared/extension-settings';
+
+const extensionSettingsHost: ExtensionSettingsHostAPI = {
+  open: () => ipcRenderer.invoke(EXTENSION_SETTINGS_IPC.open),
+  close: () => ipcRenderer.invoke(EXTENSION_SETTINGS_IPC.close),
+  onClosed(listener) {
+    const handler = (_event: Electron.IpcRendererEvent, error?: string) =>
+      listener(error);
+    ipcRenderer.on(EXTENSION_SETTINGS_IPC.closed, handler);
+    return () =>
+      ipcRenderer.removeListener(EXTENSION_SETTINGS_IPC.closed, handler);
+  },
+};
+contextBridge.exposeInMainWorld('extensionSettingsHost', extensionSettingsHost);
 
 const api: TubevraAPI = {
   toggleFullscreen: () => ipcRenderer.invoke(IPC.toggleFullscreen),

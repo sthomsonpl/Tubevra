@@ -12,6 +12,7 @@ import { createTVWindow } from '../../src/main/tv-window';
 import { UserAgentStore } from '../../src/main/user-agent-store';
 import { IPC, RYD_URL } from '../../src/shared/api';
 import { RATINGS_IPC } from '../../src/shared/ratings';
+import { EXTENSION_SETTINGS_IPC } from '../../src/shared/extension-settings';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -107,7 +108,9 @@ void app
     win.show();
     win.focus();
     win.setAlwaysOnTop(true); // Test-only: keep local fixture frames painted.
-    const local = win.webContents;
+    const local = webContents
+      .getAllWebContents()
+      .find((w) => w.getURL().endsWith('/index.html'))!;
     const event = { sender: local, senderFrame: local.mainFrame };
     const opened: string[] = [];
     const openExternal = shell.openExternal;
@@ -523,16 +526,98 @@ void app
     await local.executeJavaScript(
       `document.querySelector('[data-section="extensions"]').click(); document.querySelector('[data-control-id="ryd-settings"]').click()`,
     );
+    let optionsView: Electron.WebContents;
+    await wait(async () => {
+      optionsView = webContents
+        .getAllWebContents()
+        .find((w) => w.getURL().endsWith('#extension-settings'))!;
+      return (
+        optionsView &&
+        (await optionsView.executeJavaScript(
+          '!!document.querySelector("input") && !document.querySelector("input").disabled',
+        ))
+      );
+    });
     assert.equal(
-      await local.executeJavaScript(
+      await optionsView!.executeJavaScript(
         `document.querySelector('dialog[open]')?.dataset.extensionId`,
       ),
       'return-youtube-dislike',
     );
-    await local.executeJavaScript(
+    assert.equal(
+      await optionsView!.executeJavaScript('document.activeElement.tagName'),
+      'H2',
+    );
+    assert.equal(
+      await optionsView!.executeJavaScript(
+        "document.querySelector('input').matches(':focus-visible')",
+      ),
+      false,
+    );
+    assert.equal(
+      await optionsView!.executeJavaScript('typeof window.tubevra'),
+      'undefined',
+    );
+    assert.equal(
+      (
+        await optionsView!.executeJavaScript(
+          "window.extensionSettings.save('false')",
+        )
+      ).ok,
+      false,
+    );
+    assert.equal(
+      (
+        await optionsView!.executeJavaScript(
+          'window.extensionSettings.resize(-1)',
+        )
+      ).ok,
+      false,
+    );
+    assert.throws(
+      () =>
+        (ipcMain as any)._invokeHandlers.get(EXTENSION_SETTINGS_IPC.get)(event),
+      /Untrusted/,
+    );
+    optionsView!.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
+    optionsView!.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
+    await wait(
+      async () =>
+        await optionsView!.executeJavaScript(
+          "document.activeElement === document.querySelector('input')",
+        ),
+    );
+    assert.equal(
+      await optionsView!.executeJavaScript(
+        "document.querySelector('input').matches(':focus-visible')",
+      ),
+      true,
+    );
+    const togglePoint = await optionsView!.executeJavaScript(
+      "(() => {const r=document.querySelector('input').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()",
+    );
+    optionsView!.sendInputEvent({
+      type: 'mouseDown',
+      ...togglePoint,
+      button: 'left',
+      clickCount: 1,
+    });
+    optionsView!.sendInputEvent({
+      type: 'mouseUp',
+      ...togglePoint,
+      button: 'left',
+      clickCount: 1,
+    });
+    await wait(
+      async () =>
+        await optionsView!.executeJavaScript(
+          "!document.querySelector('input').matches(':focus-visible')",
+        ),
+    );
+    await optionsView!.executeJavaScript(
       `document.querySelector('[data-control-id="ryd-show-with-dock"]').click()`,
     );
-    await local.executeJavaScript(
+    await optionsView!.executeJavaScript(
       `document.querySelector('dialog[open] button.secondary').click()`,
     );
     await wait(
@@ -550,17 +635,46 @@ void app
     await local.executeJavaScript(
       `document.querySelector('[data-control-id="ryd-settings"]').click()`,
     );
+    await wait(
+      async () =>
+        await optionsView!.executeJavaScript(
+          '!!document.querySelector("input") && !document.querySelector("input").disabled && document.querySelector("input").checked',
+        ),
+    );
     assert.equal(
-      await local.executeJavaScript(
+      await optionsView!.executeJavaScript(
         `document.querySelector('[data-control-id="ryd-show-with-dock"]').checked`,
       ),
       true,
     );
-    fs.writeFileSync(
-      path.join(output, 'ryd-settings.png'),
-      (await local.capturePage()).toPNG(),
+    assert.equal(
+      await optionsView!.executeJavaScript(
+        "document.querySelector('input').matches(':focus-visible')",
+      ),
+      false,
+    );
+    optionsView!.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    optionsView!.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    await wait(
+      async () =>
+        await local.executeJavaScript(
+          "!document.querySelector('dialog[open]')",
+        ),
     );
     await local.executeJavaScript(
+      'document.querySelector(\'[data-control-id="ryd-settings"]\').click()',
+    );
+    await wait(
+      async () =>
+        await optionsView!.executeJavaScript(
+          "!!document.querySelector('input') && !document.querySelector('input').disabled && document.querySelector('input').checked",
+        ),
+    );
+    fs.writeFileSync(
+      path.join(output, 'ryd-settings.png'),
+      (await optionsView!.capturePage()).toPNG(),
+    );
+    await optionsView!.executeJavaScript(
       `document.querySelector('[data-control-id="ryd-show-with-dock"]').click(); document.querySelector('dialog[open] button.primary').click()`,
     );
     await wait(

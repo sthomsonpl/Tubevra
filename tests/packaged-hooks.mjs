@@ -55,7 +55,11 @@ try {
         ryd ? /return-youtube-dislike/ : /sponsorblock/,
       );
     if (ryd) {
-      for (const file of ['preload.cjs', 'ratings-preload.cjs'])
+      for (const file of [
+        'preload.cjs',
+        'ratings-preload.cjs',
+        'extension-settings-preload.cjs',
+      ])
         assert.ok(
           (await readFile(path.join(source, '.vite/build', file))).length,
         );

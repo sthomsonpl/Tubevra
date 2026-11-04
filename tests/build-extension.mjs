@@ -8,6 +8,10 @@ for (const [entry, filename] of [
   [`tests/electron/${extension}-main.ts`, 'main.cjs'],
   ['src/preload/preload.ts', 'preload.cjs'],
   ['src/preload/ratings-preload.ts', 'ratings-preload.cjs'],
+  [
+    'src/preload/extension-settings-preload.ts',
+    'extension-settings-preload.cjs',
+  ],
   ['src/preload/tv-preload.ts', 'tv-preload.cjs'],
 ]) {
   await build({

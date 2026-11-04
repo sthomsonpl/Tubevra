@@ -50,6 +50,10 @@ WebContents, main frame and exact URL. Closing the window closes this view too.
 
 ## Settings behaviour
 
+Add-on options use a separate sandboxed native glass view. Background controls
+are blocked while it is open. Cancel/Escape discard edits; save errors keep the
+draft. IPC is restricted to the RYD preference, closing and bounded resizing.
+
 - About opens the project GitHub page and Privacy Policy in the default browser.
   The policy links to `PRIVACY.md` on the repository's `main` branch. Browser
   failures are shown in About; only fixed destinations are exposed through IPC.

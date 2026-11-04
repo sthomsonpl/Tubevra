@@ -109,8 +109,52 @@
 }
 
 .settings-page.glass-active .settings-dialog {
-  background: #181e29ed;
-  backdrop-filter: blur(18px);
+  background:
+    linear-gradient(135deg, #ffffff0d, transparent 38%, #ffffff03), #14182070;
+  border-color: #ffffff28;
+  box-shadow:
+    inset 0 1px 0 #ffffff2a,
+    inset 0 -1px 0 #ffffff08,
+    0 24px 64px #00000055;
+}
+
+/* Native blur owns this bounded view; avoid stacking a second dark frame. */
+.settings-page.extension-options-page {
+  background: transparent;
+  min-height: 0;
+}
+
+.extension-options-page.glass-active .settings-dialog {
+  width: 100%;
+  max-width: none;
+  max-height: 100vh;
+  margin: 0;
+  background:
+    linear-gradient(135deg, #ffffff0d, transparent 38%, #ffffff03), #14182030;
+  box-shadow:
+    inset 0 1px 0 #ffffff2a,
+    inset 0 -1px 0 #ffffff08;
+}
+
+.extension-options-page .settings-dialog::backdrop,
+.extension-settings-blocker::backdrop {
+  background: transparent;
+}
+
+.extension-options-page .settings-dialog-header h2:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.extension-settings-blocker {
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .settings-page .app-shell {
@@ -470,33 +514,47 @@
 
 /* Panels */
 .settings-dialog {
-  width: min(480px, calc(100vw - 32px));
+  width: min(520px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
-  padding: 24px;
+  padding: 0;
   overflow-y: auto;
   color: var(--text-main);
   background: var(--bg-frame);
   border: 1px solid var(--border-widget);
-  border-radius: 14px;
-  box-shadow: 0 24px 80px #0009;
+  border-radius: 16px;
+  box-shadow:
+    var(--highlight-top),
+    0 24px 64px #0006;
 }
 
 .settings-dialog::backdrop {
-  background: #0009;
-  backdrop-filter: blur(4px);
+  background: #080c141a;
 }
 
-.settings-dialog form > h2 {
+.settings-dialog-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 24px;
+  padding-bottom: 0;
+}
+
+.settings-dialog-header h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .settings-dialog-content {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  margin-top: 12px;
+  padding: 24px;
+}
+
+.settings-dialog-content > .feedback:empty {
+  display: none;
 }
 
 .settings-dialog-note {
@@ -512,11 +570,40 @@
 }
 
 .settings-dialog-actions {
+  --action-bg: #ffffff0a;
+  --action-hover: #ffffff14;
+  --action-border: var(--border-widget);
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 24px;
+  gap: 10px;
+  padding: 0 24px 24px;
+}
+
+.settings-dialog-actions .secondary {
+  --action-bg: #f871710a;
+  --action-hover: #f8717114;
+  --action-border: #f8717124;
+}
+
+.settings-page .settings-dialog-actions button:not(:focus-visible) {
+  border-color: var(--action-border);
+  box-shadow: var(--highlight-top);
+}
+
+.settings-page .settings-dialog-actions button {
+  min-height: 36px;
+  min-width: 88px;
+  padding: 8px 16px;
+  border-radius: 9px;
+  color: var(--text-main);
+  background-color: var(--action-bg);
+  background-image: linear-gradient(160deg, #ffffff06, transparent 65%);
+}
+
+.settings-page .settings-dialog-actions button:hover:not(:disabled) {
+  background-color: var(--action-hover);
+  background-image: linear-gradient(160deg, #ffffff06, transparent 65%);
 }
 
 #panel-extensions {
