@@ -21,7 +21,7 @@ export function mountExtensions(root: HTMLElement) {
   empty.hidden = true;
   const reload = document.createElement('button');
   reload.type = 'button';
-  reload.className = 'secondary reload-action';
+  reload.className = 'ui-button secondary reload-action ui-button--emphasized';
   reload.textContent = 'Reload YouTube TV';
   reload.hidden = true;
   root.append(feedback, empty, list, reload);
@@ -30,7 +30,7 @@ export function mountExtensions(root: HTMLElement) {
   let operationError = '';
   const rydButton = document.createElement('button');
   rydButton.type = 'button';
-  rydButton.className = 'secondary compact-btn';
+  rydButton.className = 'ui-button secondary compact-btn';
   rydButton.textContent = 'Settings';
   rydButton.dataset.controlId = 'ryd-settings';
   rydButton.setAttribute('aria-label', 'Settings for Return YouTube Dislike');

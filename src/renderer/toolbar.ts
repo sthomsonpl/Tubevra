@@ -3,16 +3,16 @@ import type { AppState } from '../shared/api';
 export function mountToolbar(root: HTMLElement) {
   document.body.className = 'toolbar-page';
   root.innerHTML = `<nav class="toolbar" aria-label="Tubevra">
-    <button id="back" type="button" title="Back in YouTube TV" aria-label="Back">
+    <button id="back" type="button" title="Back in YouTube TV" aria-label="Back" class="ui-button ui-button--dock">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5-7 7 7 7M7 12h13"/></svg><span>Back</span>
     </button>
-    <button id="home" type="button" title="YouTube TV home" aria-label="Home">
+    <button id="home" type="button" title="YouTube TV home" aria-label="Home" class="ui-button ui-button--dock">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v11h5v-6h4v6h5V9"/></svg><span>Home</span>
     </button>
-    <button id="fullscreen" type="button" title="Enter fullscreen (F11)" aria-label="Enter fullscreen" aria-pressed="false">
+    <button id="fullscreen" type="button" title="Enter fullscreen (F11)" aria-label="Enter fullscreen" aria-pressed="false" class="ui-button ui-button--dock">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/></svg><span>Fullscreen</span>
     </button>
-    <button id="settings" type="button" title="Tubevra settings" aria-label="Settings">
+    <button id="settings" type="button" title="Tubevra settings" aria-label="Settings" class="ui-button ui-button--dock">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6"/></svg><span>Settings</span>
     </button>
   </nav>`;

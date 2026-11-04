@@ -100,3 +100,28 @@ fixtures. After npm run package, run npm run test:ui and npm run test:ryd:packag
 on Windows x64. Fixtures and simulated
 cursor/input do not establish OS hit testing, physical IME, live YouTube playback
 or behaviour on macOS/Linux. These require native checks.
+
+## Shared renderer components
+
+`index.css` loads `tokens.css`, the base reset, and `components.css` before
+view layouts. Shared colours, radii, focus shadows and transition timings live
+in `tokens.css`; `.glass-active` overrides theme values. The ratings canvas reads
+the same glass tokens as the dock instead of maintaining duplicate colours.
+
+Use `.ui-select` for every dropdown, including its picker and option states.
+Use `.ui-input`, `.ui-textarea` and `.ui-label` for form fields. IDs identify
+controls for labels and behaviour; they do not define their visual appearance.
+View styles own placement and available width (for example, an inline settings
+select), while component styles own the control itself.
+
+Buttons use `.ui-button` with a colour variant (`primary`, `secondary`, `danger`
+or `danger-text`) or an explicit surface variant (`ui-button--dock`,
+`ui-button--dialog`). Dialog cancellation adds `ui-button--cancel`; the footer
+does not implicitly recolour its children. Navigation, tabs and selectable lists
+use `.ui-nav-item`, `.ui-tabs`, `.ui-tab` and `.ui-list-item`. Existing feature
+classes remain behaviour hooks. Reuse the row/toggle factories in `widgets.ts`
+and the dialog factory in `settings-dialog.ts` when building add-on controls.
+
+Cards, rows, statuses and feedback also share component rules. Keep layout and
+feature-specific icon decorations in the view stylesheet. Shared controls define
+keyboard focus and disabled/selected states; preserve native form and IME input.

@@ -15,21 +15,29 @@ export function mountRatings(root: HTMLElement) {
     canvas.width = Math.round(width * scale);
     canvas.height = Math.round(height * scale);
     const ctx = canvas.getContext('2d')!;
+    const theme = getComputedStyle(document.documentElement);
+    const token = (name: string) => theme.getPropertyValue(name).trim();
     ctx.scale(scale, scale);
     ctx.beginPath();
-    ctx.roundRect(0.5, 0.5, width - 1, height - 1, 26);
+    ctx.roundRect(
+      0.5,
+      0.5,
+      width - 1,
+      height - 1,
+      parseFloat(token('--glass-radius')),
+    );
     const gradient = ctx.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, '#ffffff17');
-    gradient.addColorStop(0.6, '#ffffff03');
+    gradient.addColorStop(0, token('--glass-start'));
+    gradient.addColorStop(0.6, token('--glass-end'));
     ctx.fillStyle = gradient;
     ctx.fill();
-    ctx.strokeStyle = '#ffffff38';
+    ctx.strokeStyle = token('--glass-edge');
     ctx.stroke();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const family = getComputedStyle(document.documentElement).fontFamily;
     ctx.font = `14px ${family}`;
-    ctx.fillStyle = '#f4f5f7';
+    ctx.fillStyle = token('--overlay-text');
     ctx.fillText(
       counts.textContent ?? '',
       width / 2,
@@ -37,7 +45,7 @@ export function mountRatings(root: HTMLElement) {
       width - 16,
     );
     ctx.font = `10px ${family}`;
-    ctx.fillStyle = '#d4d8e1';
+    ctx.fillStyle = token('--overlay-muted');
     ctx.fillText('RYD · Estimated ratings', width / 2, height / 2 + 12);
     canvas.dataset.version = String(version);
   }

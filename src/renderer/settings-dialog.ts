@@ -30,14 +30,14 @@ export function createSettingsDialog(
   footer.className = 'settings-dialog-actions';
   const cancel = document.createElement('button');
   cancel.type = 'button';
-  cancel.className = 'secondary';
+  cancel.className = 'ui-button secondary ui-button--dialog ui-button--cancel';
   cancel.textContent = 'Cancel';
   cancel.addEventListener('click', () =>
     actions.onCancel ? actions.onCancel() : dialog.close(),
   );
   const save = document.createElement('button');
   save.type = 'submit';
-  save.className = 'primary';
+  save.className = 'ui-button primary ui-button--dialog';
   save.textContent = actions.saveLabel ?? 'Save settings';
   form.addEventListener('submit', () => actions.onSave());
   footer.append(cancel, save);
@@ -45,7 +45,7 @@ export function createSettingsDialog(
   dialog.append(form);
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'secondary compact-btn';
+  button.className = 'ui-button secondary compact-btn';
   button.textContent = 'Settings';
   button.setAttribute('aria-label', `Settings for ${title}`);
   button.setAttribute('aria-haspopup', 'dialog');

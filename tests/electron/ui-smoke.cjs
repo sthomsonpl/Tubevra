@@ -802,6 +802,35 @@ app
     checks.push(
       'settings glass sits above live YouTube in a separate native view',
     );
+    const sharedSelects = await shell.executeJavaScript(`(() => {
+      const glass = document.body.classList.contains('glass-active');
+      const results = [];
+      for (const active of [false, true]) {
+        document.body.classList.toggle('glass-active', active);
+        results.push(['playback-resolution', 'replacement'].map(id => {
+          const el = document.getElementById(id);
+          const control = getComputedStyle(el);
+          const picker = getComputedStyle(el, '::picker(select)');
+          return [control.appearance, control.backgroundColor, control.borderRadius,
+            picker.appearance, picker.backgroundColor, picker.borderRadius];
+        }));
+      }
+      document.body.classList.toggle('glass-active', glass);
+      return results;
+    })()`);
+    for (const [resolution, replacement] of sharedSelects) {
+      assert.deepEqual(
+        resolution,
+        replacement,
+        'selects share control and picker styling',
+      );
+      assert.equal(resolution[0], 'base-select');
+      assert.equal(resolution[3], 'base-select');
+    }
+    checks.push(
+      'both selects share picker and control presentation in solid and glass themes',
+    );
+
     await shell.executeJavaScript(
       `document.querySelector('[data-section="about"]').click()`,
     );

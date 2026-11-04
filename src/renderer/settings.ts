@@ -87,8 +87,8 @@ export function mountSettings(root: HTMLElement) {
         <h1 id="connection-title">Your big-screen YouTube.</h1>
         <p id="connection-status" class="connection-status" role="status">Connecting to YouTube TV…</p>
         <div class="actions">
-          <button id="retry" class="primary" type="button">Try again</button>
-          <button id="open-settings" class="secondary" type="button">Settings</button>
+          <button id="retry" class="ui-button primary" type="button">Try again</button>
+          <button id="open-settings" class="ui-button secondary" type="button">Settings</button>
         </div>
       </div>
     </section>
@@ -108,32 +108,32 @@ export function mountSettings(root: HTMLElement) {
             </div>
 
             <nav class="sidebar-nav" aria-label="Settings sections">
-              <button type="button" class="nav-item" data-section="general" aria-current="false">
+              <button type="button" class="ui-button nav-item ui-nav-item" data-section="general" aria-current="false">
                 <span class="nav-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="11" cy="18" r="2"/></svg>
                 </span>
                 <span>General</span>
               </button>
-              <button type="button" class="nav-item" data-section="tv" aria-current="false">
+              <button type="button" class="ui-button nav-item ui-nav-item" data-section="tv" aria-current="false">
                 <span class="nav-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="13" rx="2.5"/><path d="M8 21h8"/></svg>
                 </span>
                 <span>TV</span>
               </button>
-              <button type="button" class="nav-item is-current" data-section="user-agents" aria-current="page">
+              <button type="button" class="ui-button nav-item is-current ui-nav-item" data-section="user-agents" aria-current="page">
                 <span class="nav-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.8 8 10 4.6-1.2 8-5 8-10V7l-8-4Z"/><path d="m9.5 12 1.8 1.8 3.7-3.8"/></svg>
                 </span>
                 <span>User Agents</span>
                 <span id="preset-count" class="nav-badge"></span>
               </button>
-              <button type="button" class="nav-item" data-section="extensions" aria-current="false">
+              <button type="button" class="ui-button nav-item ui-nav-item" data-section="extensions" aria-current="false">
                 <span class="nav-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v4h2a3 3 0 0 1 0 6H3v4a2 2 0 0 0 2 2h4v-2a3 3 0 0 1 6 0v2h4a2 2 0 0 0 2-2v-4h-2a3 3 0 0 1 0-6h2V5a2 2 0 0 0-2-2h-4v2a3 3 0 0 1-6 0V3Z"/></svg>
                 </span>
                 <span>Add-ons</span>
               </button>
-              <button type="button" class="nav-item" data-section="about" aria-current="false">
+              <button type="button" class="ui-button nav-item ui-nav-item" data-section="about" aria-current="false">
                 <span class="nav-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/></svg>
                 </span>
@@ -160,7 +160,7 @@ export function mountSettings(root: HTMLElement) {
               <h1 id="settings-title">User Agents</h1>
               <p id="section-subtitle" class="heading-subtitle">Choose how Tubevra identifies itself to YouTube TV.</p>
             </div>
-            <button id="done" class="secondary done-button" type="button">
+            <button id="done" class="ui-button secondary done-button" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
               <span>Back to TV</span>
             </button>
@@ -219,8 +219,8 @@ export function mountSettings(root: HTMLElement) {
                 <span class="row-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
                 </span>
-                <div class="row-copy"><label for="playback-resolution"><strong>Playback resolution</strong></label></div>
-                <select id="playback-resolution" class="playback-resolution">
+                <div class="row-copy"><label for="playback-resolution" class="ui-label"><strong>Playback resolution</strong></label></div>
+                <select id="playback-resolution" class="ui-select">
                   <option value="auto">Auto</option>
                   <option value="1440p">1440p</option>
                   <option value="4k">2160p (4K)</option>
@@ -235,7 +235,7 @@ export function mountSettings(root: HTMLElement) {
                   <strong>Reload YouTube TV</strong>
                   <p>Reload the main Leanback interface while keeping your session</p>
                 </div>
-                <button id="reload-home" class="secondary compact-btn reload-action" type="button">Reload</button>
+                <button id="reload-home" class="ui-button secondary compact-btn reload-action ui-button--emphasized" type="button">Reload</button>
               </div>
             </div>
             <p id="general-feedback" class="feedback" role="status" aria-live="polite"></p>
@@ -248,7 +248,7 @@ export function mountSettings(root: HTMLElement) {
                   <strong>Restart required</strong>
                   <p role="status">Restart Tubevra to apply the hardware acceleration setting.</p>
                 </div>
-                <button id="restart-app" class="secondary compact-btn" type="button">Restart Tubevra</button>
+                <button id="restart-app" class="ui-button secondary compact-btn" type="button">Restart Tubevra</button>
               </div>
             </div>
           </div>
@@ -263,7 +263,7 @@ export function mountSettings(root: HTMLElement) {
                   <strong>User-Agent Identity</strong>
                   <p id="tv-active-ua">Active: —</p>
                 </div>
-                <button id="go-user-agents" class="primary compact-btn" type="button">Configure</button>
+                <button id="go-user-agents" class="ui-button primary compact-btn" type="button">Configure</button>
               </div>
             </div>
           </div>
@@ -272,17 +272,17 @@ export function mountSettings(root: HTMLElement) {
             <div class="settings-layout">
               <aside class="widget-box presets-panel" aria-label="User-Agent presets">
                 <div class="presets-toolbar">
-                  <div class="segmented-switch" role="tablist" aria-label="Preset category">
-                    <button id="tab-default" type="button" class="seg-btn is-selected" data-tab="default" role="tab" aria-selected="true">
+                  <div class="segmented-switch ui-tabs" role="tablist" aria-label="Preset category">
+                    <button id="tab-default" type="button" class="ui-button seg-btn is-selected ui-tab" data-tab="default" role="tab" aria-selected="true">
                       <span>Default</span>
                       <small id="default-count"></small>
                     </button>
-                    <button id="tab-user" type="button" class="seg-btn" data-tab="user" role="tab" aria-selected="false">
+                    <button id="tab-user" type="button" class="ui-button seg-btn ui-tab" data-tab="user" role="tab" aria-selected="false">
                       <span>User</span>
                       <small id="user-count"></small>
                     </button>
                   </div>
-                  <button id="new-preset" class="new-preset-button" type="button" title="Add custom preset">+ Add</button>
+                  <button id="new-preset" class="ui-button new-preset-button ui-button--ghost" type="button" title="Add custom preset">+ Add</button>
                 </div>
 
                 <div id="preset-list" class="preset-list-container">
@@ -309,25 +309,25 @@ export function mountSettings(root: HTMLElement) {
                       </div>
                     </div>
                   </div>
-                  <button id="apply-preset" class="primary apply-btn" type="button">Apply preset</button>
+                  <button id="apply-preset" class="ui-button primary apply-btn ui-button--apply" type="button">Apply preset</button>
                 </div>
 
                 <form id="preset-form">
                   <fieldset id="editor-fields">
                     <div class="form-row">
-                      <label for="preset-name">Name</label>
-                      <input id="preset-name" name="name" maxlength="100" required autocomplete="off" spellcheck="false" />
+                      <label for="preset-name" class="ui-label">Name</label>
+                      <input id="preset-name" name="name" maxlength="100" required autocomplete="off" spellcheck="false" class="ui-input" />
                     </div>
                     <div class="form-row form-row-grow">
-                      <label for="preset-value">User-Agent string</label>
-                      <textarea id="preset-value" name="userAgent" rows="4" maxlength="4096" required autocomplete="off" spellcheck="false"></textarea>
+                      <label for="preset-value" class="ui-label">User-Agent string</label>
+                      <textarea id="preset-value" name="userAgent" rows="4" maxlength="4096" required autocomplete="off" spellcheck="false" class="ui-textarea"></textarea>
                     </div>
                     <div class="inspector-bottom">
                       <p id="editor-note" class="field-note"></p>
                       <div class="editor-actions">
-                        <button id="delete-preset" class="danger-text" type="button" hidden>Delete preset</button>
-                        <button id="discard" class="secondary" type="button" hidden>Discard changes</button>
-                        <button id="save-preset" class="primary" type="submit">Save changes</button>
+                        <button id="delete-preset" class="ui-button danger-text" type="button" hidden>Delete preset</button>
+                        <button id="discard" class="ui-button secondary" type="button" hidden>Discard changes</button>
+                        <button id="save-preset" class="ui-button primary" type="submit">Save changes</button>
                       </div>
                     </div>
                   </fieldset>
@@ -340,11 +340,11 @@ export function mountSettings(root: HTMLElement) {
                     <h3>Delete this preset?</h3>
                     <p id="delete-note"></p>
                   </div>
-                  <label id="replacement-label" for="replacement">Replacement preset</label>
-                  <select id="replacement"><option value="">Choose a replacement…</option></select>
+                  <label id="replacement-label" for="replacement" class="ui-label">Replacement preset</label>
+                  <select id="replacement" class="ui-select"><option value="">Choose a replacement…</option></select>
                   <div class="actions">
-                    <button id="confirm-delete" class="danger" type="button">Delete preset</button>
-                    <button id="cancel-delete" class="secondary" type="button">Cancel</button>
+                    <button id="confirm-delete" class="ui-button danger" type="button">Delete preset</button>
+                    <button id="cancel-delete" class="ui-button secondary" type="button">Cancel</button>
                   </div>
                 </section>
               </section>
@@ -477,7 +477,7 @@ export function mountSettings(root: HTMLElement) {
       const isSelected = !creating && preset.id === selectedId;
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'preset-option';
+      button.className = 'ui-button preset-option ui-list-item';
       button.classList.toggle('is-active', isActive);
       button.dataset.presetId = preset.id;
       button.setAttribute('aria-pressed', String(isSelected));
