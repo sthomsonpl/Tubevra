@@ -168,8 +168,7 @@ export async function createTVWindow(
       canOpen: () => settingsOpen && !playbackFullscreen,
       getPreference: () => extensions.snapshot().ryd.showWithDock,
       savePreference: (value) => extensions.setRydShowWithDock(value),
-      onVisibility: (open) =>
-        overlays.setSuppressed(playbackFullscreen || open),
+      onVisibility: () => overlays.refresh(),
     },
   );
   for (const surface of [
@@ -327,7 +326,7 @@ export async function createTVWindow(
     if (!settingsOpen) extensionSettings.close(true);
     updateRatings();
     dock.setPinned(settingsOpen || !!error || loading);
-    overlays.setSuppressed(playbackFullscreen || extensionSettings.isOpen());
+    overlays.setSuppressed(playbackFullscreen);
   };
   const pageBridge = connectPage(ipcMain, contents, extensions);
   notifyExtensions = () => {

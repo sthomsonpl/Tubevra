@@ -538,6 +538,10 @@ void app
         ))
       );
     });
+    await wait(() => dockView.getVisible());
+    await delay(1800);
+    assert.ok(dockView.getVisible(), 'extension options keep the dock pinned');
+    assert.equal(panelView.getVisible(), false, 'settings suppress ratings');
     assert.equal(
       await optionsView!.executeJavaScript(
         `document.querySelector('dialog[open]')?.dataset.extensionId`,
@@ -689,6 +693,11 @@ void app
           "!document.querySelector('dialog[open]')",
         ),
     );
+    assert.ok(
+      dockView.getVisible(),
+      'closing extension options keeps the dock',
+    );
+    assert.equal(panelView.getVisible(), false);
     await local.executeJavaScript('window.tubevra.setSettingsOpen(false)');
     reveal();
     await wait(() => dockView.getVisible());
