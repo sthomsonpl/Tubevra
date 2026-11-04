@@ -67,6 +67,7 @@ export async function createTVWindow(
     height: 800,
     minWidth: 640,
     minHeight: 540,
+    backgroundColor: '#08090b',
     icon: path.join(app.getAppPath(), 'assets', 'icon', 'icon.ico'),
     webPreferences: {
       nodeIntegration: false,
