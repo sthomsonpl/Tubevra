@@ -15,7 +15,13 @@ export function mountToolbar(root: HTMLElement) {
     <button id="settings" type="button" title="Tubevra settings" aria-label="Settings" class="ui-button ui-button--dock">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6"/></svg><span>Settings</span>
     </button>
-  </nav>`;
+  </nav><div class="toolbar-error" role="alert" hidden></div>`;
+  const feedback = root.querySelector<HTMLElement>('.toolbar-error')!;
+  function showError(message: string) {
+    feedback.textContent = message;
+    feedback.title = message;
+    feedback.hidden = false;
+  }
   const back = root.querySelector<HTMLButtonElement>('#back')!;
   const home = root.querySelector<HTMLButtonElement>('#home')!;
   const settings = root.querySelector<HTMLButtonElement>('#settings')!;
@@ -51,14 +57,18 @@ export function mountToolbar(root: HTMLElement) {
   async function run(action: () => ReturnType<typeof window.tubevra.navigate>) {
     if (busy) return;
     busy = true;
+    feedback.hidden = true;
     if (current) render(current);
     try {
       const result = await action();
       if (result.ok === false) {
+        showError(result.error);
         await window.tubevra.setSettingsOpen(true);
       } else render(result.value);
-    } catch {
-      root.textContent = 'Tubevra is unavailable.';
+    } catch (cause) {
+      showError(
+        cause instanceof Error ? cause.message : 'Tubevra is unavailable.',
+      );
     } finally {
       busy = false;
       if (current) render(current);
@@ -90,9 +100,9 @@ export function mountToolbar(root: HTMLElement) {
     .getState()
     .then((result) => {
       if (result.ok === true) render(result.value);
-      else root.textContent = result.error;
+      else showError(result.error);
     })
     .catch(() => {
-      root.textContent = 'Tubevra is unavailable.';
+      showError('Tubevra is unavailable.');
     });
 }

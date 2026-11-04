@@ -1124,6 +1124,61 @@ app
     checks.push(
       'Back emits Escape; input and simulated composition guards on local fixture',
     );
+    await tv.executeJavaScript(`
+      window.closeAttempts = 0;
+      window.exitOnBack = e => {
+        if (e.key === 'Escape') { window.closeAttempts++; window.close(); }
+      };
+      document.addEventListener('keydown', window.exitOnBack);
+      for (let i=0;i<50;i++) window.close();
+    `);
+    for (let i = 0; i < 20; i++) {
+      await click(toolbar, 'back');
+      await waitFor(
+        async () =>
+          (await tv.executeJavaScript('window.closeAttempts')) === i + 1,
+        'Back exit request ignored',
+      );
+    }
+    await tv.executeJavaScript(
+      `document.removeEventListener('keydown',window.exitOnBack)`,
+    );
+    assert.equal(tv.isDestroyed(), false);
+    assert.equal((await state()).error, null);
+    // A rejected IPC must leave the dock usable for a subsequent action.
+    ipcMain.removeHandler('tubevra:toggle-fullscreen');
+    ipcMain.handle('tubevra:toggle-fullscreen', () => {
+      throw Error('Forced dock IPC failure');
+    });
+    await click(toolbar, 'fullscreen');
+    await waitFor(
+      async () =>
+        toolbar.executeJavaScript(
+          '!document.querySelector(".toolbar-error").hidden',
+        ),
+      'visible dock IPC error',
+    );
+    assert.equal(
+      await toolbar.executeJavaScript(
+        'document.querySelectorAll(".toolbar button").length',
+      ),
+      4,
+    );
+    ipcMain.removeHandler('tubevra:toggle-fullscreen');
+    ipcMain.handle('tubevra:toggle-fullscreen', toggleFullscreen);
+    await click(toolbar, 'settings');
+    await waitFor(
+      async () => (await state()).settingsOpen,
+      'dock usable after rejected IPC',
+    );
+    await click(toolbar, 'back');
+    await waitFor(
+      async () => !(await state()).settingsOpen,
+      'settings closed after rejected IPC',
+    );
+    checks.push(
+      'page close and repeated exit-on-Back requests retain TV; dock survives rejected IPC',
+    );
 
     await tv.executeJavaScript(
       `document.querySelector('#player').src = 'https://www.youtube.com/tv/test-audio.wav';
@@ -1206,12 +1261,34 @@ app
       'compact layout, validated visibility IPC, visible reload failure without UA fallback',
     );
     assert.deepEqual(errors, []);
+    tv.close();
+    await waitFor(
+      async () => !!(await state()).error,
+      'destroyed TV view reported',
+    );
+    assert.match((await state()).error, /YouTube view closed/);
+    assert.equal(
+      (await toolbar.executeJavaScript('window.tubevra.navigate("home")')).ok,
+      false,
+    );
+    assert.equal(
+      (await toolbar.executeJavaScript('window.tubevra.setSettingsOpen(true)'))
+        .ok,
+      true,
+    );
+    checks.push(
+      'unexpected TV destruction reports an error and keeps settings accessible',
+    );
     console.log(JSON.stringify({ checks, requests, profile, output }, null, 2));
     fs.writeFileSync(
       path.join(output, 'report.json'),
       JSON.stringify({ checks, requests, errors, profile }, null, 2),
     );
-    win.destroy();
+    win.close();
+    await waitFor(
+      () => win.isDestroyed(),
+      'native host close remains available',
+    );
     app.exit(0);
   })
   .catch((error) => {

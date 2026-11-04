@@ -117,6 +117,11 @@ export async function createTVWindow(
     },
   });
   const contents = youtube.webContents;
+  const currentTVURL = () => {
+    if (contents.isDestroyed())
+      throw new Error('YouTube view closed. Restart Tubevra to reopen it.');
+    return contents.getURL();
+  };
   youtube.setVisible(false);
   contents.setUserAgent(store.activeUserAgent());
   mainWindow.contentView.addChildView(youtube);
@@ -205,7 +210,7 @@ export async function createTVWindow(
       if (extensionSettings.isOpen())
         extensionSettings.view.webContents.focus();
       else if (settingsOpen || error || loading) local.webContents.focus();
-      else contents.focus();
+      else if (!contents.isDestroyed()) contents.focus();
     },
     () => refreshOverlays(),
   );
@@ -284,7 +289,13 @@ export async function createTVWindow(
     overlays.refresh();
   };
   ratings.view.webContents.on('focus', () => {
-    if (mainWindow.isFocused() && !settingsOpen && !loading && !error)
+    if (
+      mainWindow.isFocused() &&
+      !settingsOpen &&
+      !loading &&
+      !error &&
+      !contents.isDestroyed()
+    )
       contents.focus();
   });
   ratings.view.webContents.on('before-mouse-event', (event, input) => {
@@ -322,7 +333,7 @@ export async function createTVWindow(
   const syncVisibility = () => {
     // Extension errors are separate from YouTube load errors.
     if (mainWindow.isDestroyed()) return;
-    youtube.setVisible(!error && !loading);
+    if (!contents.isDestroyed()) youtube.setVisible(!error && !loading);
     local.setVisible(settingsOpen || !!error || loading);
     if (!settingsOpen) extensionSettings.close(true);
     updateRatings();
@@ -436,6 +447,8 @@ export async function createTVWindow(
   }
 
   const loadTV = async (url: string, reload = false) => {
+    if (contents.isDestroyed())
+      throw new Error('YouTube view closed. Restart Tubevra to reopen it.');
     error = null;
     loading = true;
     syncVisibility();
@@ -659,7 +672,7 @@ export async function createTVWindow(
     publish();
     if (resolution === previous) return;
     displayBridge.update(resolveTVDisplay(display, resolution));
-    const url = contents.getURL();
+    const url = currentTVURL();
     await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
   });
   handle(IPC.setHardwareAcceleration, async (...args) => {
@@ -677,7 +690,7 @@ export async function createTVWindow(
   });
   handle(IPC.reloadTV, async (...args) => {
     if (args.length) throw new Error('Unexpected arguments.');
-    const url = contents.getURL();
+    const url = currentTVURL();
     await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
   });
   ipcMain.handle(IPC.setSettingsOpen, (event, ...args): Result<AppState> => {
@@ -693,7 +706,7 @@ export async function createTVWindow(
     syncVisibility();
     publish();
     if (settingsOpen || error) local.webContents.focus();
-    else contents.focus();
+    else if (!contents.isDestroyed()) contents.focus();
     return { ok: true, value: state() };
   });
   handle(IPC.updateUserAgents, async (...args) => {
@@ -701,6 +714,7 @@ export async function createTVWindow(
       throw new Error('Expected one User-Agent operation.');
     const previous = store.activeUserAgent();
     const previousId = store.snapshot().activeId;
+    currentTVURL();
     await store.update(args[0]);
     publish();
     const current = store.activeUserAgent();
@@ -708,7 +722,8 @@ export async function createTVWindow(
       contents.setUserAgent(current);
       // Explicit UA for the current Leanback route; preserve cookies/session.
       try {
-        await loadTV(isTVURL(contents.getURL()) ? contents.getURL() : TV_HOME);
+        const url = currentTVURL();
+        await loadTV(isTVURL(url) ? url : TV_HOME);
       } catch {
         // The configuration is committed. loadTV publishes the load error;
         // return the saved state so the editor can finish this mutation.
@@ -721,7 +736,7 @@ export async function createTVWindow(
     }
     if (args[0] === 'home') await loadTV(TV_HOME);
     else {
-      if (!isTVURL(contents.getURL()) || error)
+      if (!isTVURL(currentTVURL()) || error)
         throw new Error('Leanback is not available.');
       contents.send(IPC.requestTVBack);
     }
@@ -730,6 +745,7 @@ export async function createTVWindow(
   const dispatchBack = (event: IpcMainEvent, ...args: unknown[]) => {
     if (
       args.length ||
+      contents.isDestroyed() ||
       event.sender !== contents ||
       event.senderFrame !== contents.mainFrame ||
       !isTVURL(event.senderFrame.url) ||
@@ -764,6 +780,10 @@ export async function createTVWindow(
   );
   contents.on('render-process-gone', (_event, details) => {
     reportError(`YouTube renderer stopped: ${details.reason}`);
+  });
+  contents.on('destroyed', () => {
+    if (!mainWindow.isDestroyed())
+      reportError('YouTube view closed. Restart Tubevra to reopen it.');
   });
   contents.on('preload-error', (_event, _preloadPath, cause) => {
     reportError(`YouTube preload failed: ${cause.message}`);

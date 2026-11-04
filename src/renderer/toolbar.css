@@ -24,3 +24,15 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+.toolbar-error {
+  position: absolute;
+  bottom: 1px;
+  left: 12px;
+  right: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  color: var(--text-main);
+  background: var(--glass-start);
+}

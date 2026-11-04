@@ -1,10 +1,22 @@
 import { startPageRuntime } from '../extensions/page/bootstrap';
-import { ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/api';
 import { installTVScreen } from './tv-screen';
 import { installTVPlayerDisplay } from './tv-player-display';
 import { installCobaltMediaCapabilities } from './cobalt-media-capabilities';
 import { bootstrapHardwareCodecs } from './media-capabilities';
+
+// Leanback exits with window.close() at the end of Back navigation. The host
+// owns this embedded view's lifetime; native window closing is unaffected.
+contextBridge.executeInMainWorld({
+  func: () => {
+    Object.defineProperty(window, 'close', {
+      value: () => {},
+      writable: false,
+      configurable: false,
+    });
+  },
+});
 
 // Install both display corrections before YouTube creates its first player.
 installTVScreen();
