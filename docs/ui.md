@@ -50,10 +50,23 @@ WebContents, main frame and exact URL. Closing the window closes this view too.
 
 ## Settings behaviour
 
-Add-on options use a separate sandboxed native glass view. Background controls
-are blocked while it is open. The dock remains visible and pinned, while the ratings
-panel stays hidden. Cancel/Escape discard edits; save errors keep the
-draft. IPC is restricted to the RYD preference, closing and bounded resizing.
+General settings place Video codecs below playback resolution. Auto/Manual/Force
+saves immediately; Settings opens AV1/VP9 checkboxes in the shared native options
+view. H.264 is always allowed by the policy. The dialog explains the selection
+and warns that disabling VP9 may limit playback above 1080p.
+
+Save commits the checkbox draft; Cancel/Escape discards it. Auto retains the list
+for Manual/Force. Failed writes keep the draft. Failed reloads retain saved values
+and offer Reload YouTube TV. Closing returns focus to Settings.
+
+Force and compatibility warnings use the yellow settings banner; application
+errors take precedence in red. Force may cause stuttering, increased CPU usage
+or playback failure.
+
+Codec and add-on options share a sandboxed native view. Background controls are
+blocked, the dock remains pinned and ratings stay hidden. IPC permits only the
+active local options document's operations; switching options creates a fresh
+document. Shared controls preserve keyboard focus and native input behaviour.
 
 - About opens the project GitHub page and Privacy Policy in the default browser.
   The policy links to `PRIVACY.md` on the repository's `main` branch. Browser
@@ -125,3 +138,11 @@ and the dialog factory in `settings-dialog.ts` when building add-on controls.
 Cards, rows, statuses and feedback also share component rules. Keep layout and
 feature-specific icon decorations in the view stylesheet. Shared controls define
 keyboard focus and disabled/selected states; preserve native form and IME input.
+
+Shared checkboxes retain a native input beneath a decorative glass indicator.
+Translucent gradients and shared glass tokens define the control and row.
+Rows use a subtle cool-grey tint with a slightly brighter hover; green is confined
+to the checked box border and check mark. Checked state, full-row hover and
+keyboard focus have separate cues. Disabled
+options do not react to hover. Forced-colour mode reveals the native checkbox,
+and reduced-motion preferences disable checkbox transitions.

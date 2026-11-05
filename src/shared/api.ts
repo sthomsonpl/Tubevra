@@ -1,4 +1,5 @@
 import type { PlaybackResolution } from './tv-display';
+import type { CodecPreferences } from './media-capabilities';
 import type { ExtensionsState } from '../extensions/types';
 import type { ExtensionCommand } from '../extensions/types';
 
@@ -20,6 +21,7 @@ export type UserAgentCommand =
   | { type: 'remove'; id: string; replacementId?: string };
 
 export interface GeneralSettingsState {
+  codecPreferences: CodecPreferences;
   playbackResolution: PlaybackResolution;
   hardwareAcceleration: boolean;
   restartRequired: boolean;
@@ -37,6 +39,7 @@ export interface AppState {
   loading: boolean;
   error: string | null;
   codecWarning: string | null;
+  codecReloadRequired: boolean;
 }
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -54,6 +57,7 @@ export interface ExtensionsAPI {
 }
 
 export interface TubevraAPI extends ExtensionsAPI {
+  setCodecPreferences(value: CodecPreferences): Promise<Result<AppState>>;
   toggleFullscreen(): Promise<Result<AppState>>;
   setPlaybackResolution(value: PlaybackResolution): Promise<Result<AppState>>;
   setHardwareAcceleration(enabled: boolean): Promise<Result<AppState>>;
@@ -71,6 +75,7 @@ export interface TubevraAPI extends ExtensionsAPI {
 }
 
 export const IPC = Object.freeze({
+  setCodecPreferences: 'tubevra:set-codec-preferences',
   toggleFullscreen: 'tubevra:toggle-fullscreen',
   setHardwareAcceleration: 'tubevra:set-hardware-acceleration',
   setPlaybackResolution: 'tubevra:set-playback-resolution',

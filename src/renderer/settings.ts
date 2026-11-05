@@ -2,6 +2,7 @@ import type { AppState, Result, UserAgentCommand } from '../shared/api';
 import { PROJECT_GITHUB_URL, PRIVACY_POLICY_URL } from '../shared/api';
 import { mountExtensions } from './extensions/settings';
 import { createWidgetToggle } from './widgets';
+import { mountCodecSettings } from './codec-settings';
 
 const tubevraIcon = new URL('../../assets/icon/icon.ico', import.meta.url).href;
 
@@ -166,7 +167,13 @@ export function mountSettings(root: HTMLElement) {
             </button>
           </header>
 
-          <p id="service-error" class="error-banner" role="alert" hidden></p>
+          <div id="service-error" class="error-banner" role="alert" hidden>
+            <span class="banner-icon" aria-hidden="true"></span>
+            <div class="banner-content">
+              <strong class="banner-title"></strong>
+              <p class="banner-description"></p>
+            </div>
+          </div>
 
           <div id="panel-extensions" class="section-panel" hidden></div>
           <div id="panel-about" class="section-panel" hidden>
@@ -227,6 +234,7 @@ export function mountSettings(root: HTMLElement) {
                   <option value="8k">4320p (8K)</option>
                 </select>
               </div>
+              <div id="codec-settings"></div>
               <div class="widget-row">
                 <span class="row-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
@@ -368,6 +376,25 @@ export function mountSettings(root: HTMLElement) {
   );
   element('hardware-acceleration-control').append(hardwareAcceleration.label);
   const extensions = mountExtensions(element('panel-extensions'));
+  const codecSettings = mountCodecSettings(
+    element('codec-settings'),
+    (preferences) => {
+      void run(
+        () => window.tubevra.setCodecPreferences(preferences),
+        undefined,
+        '',
+        codecSettings.feedback,
+      );
+    },
+    () => {
+      void run(
+        () => window.tubevra.reloadTV(),
+        undefined,
+        'Applied.',
+        codecSettings.feedback,
+      );
+    },
+  );
   const value = element<HTMLTextAreaElement>('preset-value');
   const form = element<HTMLFormElement>('preset-form');
   const feedback = element('feedback');
@@ -419,6 +446,7 @@ export function mountSettings(root: HTMLElement) {
     feedback.classList.toggle('error', failure);
   }
   function controls() {
+    codecSettings.render(current, busy);
     const preset = selected();
     const active = preset?.id === current?.userAgents.activeId;
     element<HTMLFieldSetElement>('editor-fields').disabled = busy;
@@ -576,9 +604,41 @@ export function mountSettings(root: HTMLElement) {
       state.error ??
       (state.loading ? 'Connecting to YouTube TV…' : 'Ready to watch.');
     element<HTMLButtonElement>('retry').disabled = state.loading || busy;
-    element('service-error').hidden = !(state.error || state.codecWarning);
-    element('service-error').textContent =
-      state.error ?? state.codecWarning ?? '';
+    const forceCodecs = state.general.codecPreferences.mode === 'force';
+    const serviceMessage = element('service-error');
+    const isVisible = Boolean(state.error || state.codecWarning || forceCodecs);
+    serviceMessage.hidden = !isVisible;
+    if (isVisible) {
+      const isError = Boolean(state.error);
+      serviceMessage.classList.toggle('warning-banner', !isError);
+      serviceMessage.setAttribute('role', isError ? 'alert' : 'status');
+      const bannerIcon = serviceMessage.querySelector('.banner-icon');
+      const bannerTitle = serviceMessage.querySelector('.banner-title');
+      const bannerDesc = serviceMessage.querySelector('.banner-description');
+
+      if (bannerIcon) {
+        bannerIcon.innerHTML = isError
+          ? '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5m0 3h.01"/></svg>'
+          : '<svg viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 9v5m0 3h.01"/></svg>';
+      }
+
+      if (isError) {
+        if (bannerTitle) bannerTitle.textContent = 'Application error';
+        if (bannerDesc) bannerDesc.textContent = state.error;
+      } else if (forceCodecs) {
+        if (bannerTitle)
+          bannerTitle.textContent = 'Forced codecs may cause playback issues';
+        if (bannerDesc)
+          bannerDesc.textContent =
+            'They may lack hardware acceleration. Playback may lag, stutter, use more CPU or fail.';
+      } else {
+        if (bannerTitle) bannerTitle.textContent = 'Codec compatibility warning';
+        if (bannerDesc)
+          bannerDesc.textContent =
+            'Codec compatibility could not be fully verified. Playback may stutter or fail.' +
+            (state.codecWarning ? ` ${state.codecWarning}` : '');
+      }
+    }
     element('loading-note').textContent = state.loading
       ? 'Reloading…'
       : 'TV Mode';

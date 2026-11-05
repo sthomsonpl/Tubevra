@@ -211,10 +211,29 @@ test('bootstrap rejects other views, frames, URLs and arguments, owns its data a
   };
   assert.equal(ask().ok, false);
   const data = { status: 'ready', profiles: ['vp9 profile0'] };
-  bridge.update(data);
+  bridge.update({
+    preferences: shared.DEFAULT_CODEC_PREFERENCES,
+    hardware: data,
+  });
   data.profiles.push('av1 profile main');
-  assert.deepEqual([...ask().value.profiles], ['vp9 profile0']);
-  assert.ok(Object.isFrozen(ask().value.profiles));
+  assert.deepEqual([...ask().value.hardware.profiles], ['vp9 profile0']);
+  assert.ok(Object.isFrozen(ask().value.hardware.profiles));
+  const force = {
+    preferences: { mode: 'force', allowedCodecs: ['av1'] },
+    hardware: null,
+  };
+  bridge.update(force);
+  force.preferences.allowedCodecs.push('vp9');
+  assert.deepEqual([...ask().value.preferences.allowedCodecs], ['av1']);
+  assert.equal(ask().value.hardware, null);
+  assert.ok(Object.isFrozen(ask().value.preferences));
+  assert.ok(Object.isFrozen(ask().value.preferences.allowedCodecs));
+  assert.throws(() =>
+    bridge.update({
+      preferences: force.preferences,
+      hardware: { status: 'ready', profiles: [] },
+    }),
+  );
   for (const event of [
     { sender: {}, senderFrame: contents.mainFrame },
     { sender: contents, senderFrame: { url: 'https://www.youtube.com/tv' } },
@@ -229,7 +248,12 @@ test('bootstrap rejects other views, frames, URLs and arguments, owns its data a
   ipc.emit(shared.HARDWARE_CODECS_IPC.failure, event, 'test');
   ipc.emit(shared.HARDWARE_CODECS_IPC.failure, event, 'x'.repeat(1001));
   assert.equal(warnings.length, 1);
-  assert.throws(() => bridge.update({ status: 'ready', profiles: ['bad'] }));
+  assert.throws(() =>
+    bridge.update({
+      preferences: shared.DEFAULT_CODEC_PREFERENCES,
+      hardware: { status: 'ready', profiles: ['bad'] },
+    }),
+  );
   bridge.update(undefined);
   assert.equal(ask().ok, false);
   bridge.dispose();
@@ -255,7 +279,13 @@ test('preload bootstraps once only in Cobalt main TV frames and preserves errors
           ipcRenderer: {
             sendSync() {
               requests++;
-              return { ok: true, value: { status: 'disabled', profiles: [] } };
+              return {
+                ok: true,
+                value: {
+                  preferences: shared.DEFAULT_CODEC_PREFERENCES,
+                  hardware: { status: 'disabled', profiles: [] },
+                },
+              };
             },
             send() {},
           },
@@ -293,6 +323,6 @@ test('preload bootstraps once only in Cobalt main TV frames and preserves errors
       navigator: { userAgent: 'Cobalt/26' },
     },
   );
-  assert.equal(preload.bootstrapHardwareCodecs().status, 'error');
+  assert.equal(preload.bootstrapHardwareCodecs().hardware.status, 'error');
   assert.equal(warnings.length, 1);
 });

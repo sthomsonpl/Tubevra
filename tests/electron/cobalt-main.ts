@@ -30,9 +30,18 @@ if (process.env.TUBEVRA_TEST_DISABLE_ACCELERATION === '1') {
 const resultFile = path.resolve('out/verification/cobalt/result.json');
 fs.mkdirSync(path.dirname(resultFile), { recursive: true });
 const started = Date.now();
+let phase = 'Electron ready';
+setTimeout(() => {
+  fs.writeFileSync(
+    resultFile,
+    JSON.stringify({ passed: false, error: `Timed out during ${phase}` }),
+  );
+  app.exit(2);
+}, 60000).unref();
 app
   .whenReady()
   .then(async () => {
+    phase = 'creating TV window';
     const ses = session.fromPartition('persist:tubevra-tv');
     ses.protocol.handle(
       'https',
@@ -53,10 +62,18 @@ app
       return getGPUInfo(type);
     };
     await createTVWindow(await UserAgentStore.open(app.getPath('userData')));
+    phase = 'reading first document';
     const tv = webContents
       .getAllWebContents()
       .find((c) => c.getURL().startsWith('https://www.youtube.com/tv'))!;
-    const shell = BrowserWindow.getAllWindows()[0].webContents;
+    const mainWindow = BrowserWindow.getAllWindows()[0];
+    const localView = mainWindow.contentView.children.find(
+      (view) =>
+        'webContents' in view &&
+        (view as any).webContents.getURL().startsWith('file:') &&
+        !(view as any).webContents.getURL().includes('#'),
+    ) as Electron.WebContentsView;
+    const shell = localView.webContents;
     const read = () => tv.executeJavaScript('window.firstResults');
     const nativeAV1 = await shell.executeJavaScript(
       `MediaSource.isTypeSupported('video/mp4;codecs="av01.0.13M.08"')`,
@@ -117,6 +134,12 @@ app
     assert.equal(fallbackState.loading, false);
     assert.equal(fallbackState.error, null);
     assert.match(fallbackState.codecWarning, /Forced codec discovery failure/);
+    assert.equal(
+      await shell.executeJavaScript(
+        'document.querySelector("#service-error").classList.contains("warning-banner")',
+      ),
+      true,
+    );
     assert.match(
       await shell.executeJavaScript(
         'document.querySelector("#service-error").textContent',
@@ -168,6 +191,315 @@ app
     const auto = await tv.executeJavaScript(
       '({width:Math.round(screen.width*devicePixelRatio),height:Math.round(screen.height*devicePixelRatio)})',
     );
+
+    phase = 'codec options dialog';
+    await shell.executeJavaScript(
+      'document.querySelector("[data-section=general]").click()',
+    );
+    const ui = (code: string) => shell.executeJavaScript(code);
+    const waitUntil = async (
+      check: () => Promise<boolean>,
+      message: string,
+    ) => {
+      for (let i = 0; i < 200; i++) {
+        if (await check()) return;
+        await new Promise((r) => setTimeout(r, 30));
+      }
+      throw Error(message);
+    };
+    assert.equal(
+      await ui('document.querySelector("#codec-vp9") === null'),
+      true,
+    );
+    const changeMode = async (value: string) => {
+      await ui(
+        `document.querySelector('#codec-mode').value='${value}';document.querySelector('#codec-mode').dispatchEvent(new Event('change',{bubbles:true}))`,
+      );
+      await waitUntil(
+        () => ui('!document.querySelector("#codec-mode").disabled'),
+        'mode save',
+      );
+    };
+    await changeMode('manual');
+    const openOptions = async () => {
+      await ui('document.querySelector("#codec-settings-open").click()');
+      await waitUntil(
+        async () =>
+          mainWindow.contentView.children.some(
+            (view) =>
+              'webContents' in view &&
+              (view as Electron.WebContentsView).webContents
+                .getURL()
+                .endsWith('#codec-settings') &&
+              view.getVisible(),
+          ) &&
+          webContents
+            .getAllWebContents()
+            .some((c) => c.getURL().endsWith('#codec-settings')) &&
+          (await webContents
+            .getAllWebContents()
+            .find((c) => c.getURL().endsWith('#codec-settings'))!
+            .executeJavaScript(
+              '!!document.querySelector("#codec-vp9") && !document.querySelector("#codec-vp9").disabled',
+            )),
+        'codec popup',
+      );
+      return webContents
+        .getAllWebContents()
+        .find((c) => c.getURL().endsWith('#codec-settings'))!;
+    };
+    let popup = await openOptions();
+    const popupUI = (code: string) => popup.executeJavaScript(code);
+    const closeWait = () =>
+      waitUntil(
+        () => ui('!document.querySelector("#codec-settings-blocker").open'),
+        'close popup',
+      );
+    assert.match(
+      await popupUI('document.body.textContent'),
+      /Disabling VP9 may prevent playback above 1080p/,
+    );
+    assert.equal(
+      await popupUI('document.querySelector("#codec-force-warning") === null'),
+      true,
+      'the options dialog has no Force banner',
+    );
+    assert.deepEqual(await popupUI('[typeof window.tubevra,typeof require]'), [
+      'undefined',
+      'undefined',
+    ]);
+    const codecEvent = { sender: popup, senderFrame: popup.mainFrame };
+    const channels = [
+      'tubevra:options:codecs:get',
+      'tubevra:options:codecs:save',
+      'tubevra:options:codecs:reload',
+    ];
+    for (const channel of channels) {
+      const handler = ipcMain._invokeHandlers.get(channel);
+      assert.throws(
+        () => handler({ sender: shell, senderFrame: shell.mainFrame }),
+        /Untrusted/,
+      );
+      assert.throws(
+        () => handler({ sender: tv, senderFrame: tv.mainFrame }),
+        /Untrusted/,
+      );
+      assert.throws(
+        () => handler({ sender: popup, senderFrame: { url: popup.getURL() } }),
+        /Untrusted/,
+      );
+    }
+    assert.equal(
+      (await ipcMain._invokeHandlers.get(channels[0])(codecEvent, 'extra')).ok,
+      false,
+    );
+    assert.equal(
+      (
+        await ipcMain._invokeHandlers.get('tubevra:extension-settings:resize')(
+          codecEvent,
+          -1,
+        )
+      ).ok,
+      false,
+    );
+    assert.throws(
+      () =>
+        ipcMain._invokeHandlers.get('tubevra:extension-settings:save')(
+          codecEvent,
+          true,
+        ),
+      /Untrusted/,
+    );
+    assert.equal(
+      (
+        await ipcMain._invokeHandlers.get(channels[1])(codecEvent, {
+          mode: 'manual',
+          allowedCodecs: ['h264'],
+        })
+      ).ok,
+      false,
+    );
+    await popupUI(
+      'document.querySelector("#codec-vp9").click();document.querySelector(".ui-button--cancel").click()',
+    );
+    await closeWait();
+    assert.equal(await ui('document.activeElement.id'), 'codec-settings-open');
+    popup = await openOptions();
+    assert.equal(
+      await popupUI('document.querySelector("#codec-vp9").checked'),
+      true,
+      'cancel discards edits',
+    );
+    await popupUI('document.querySelector("#codec-vp9").focus()');
+    assert.equal(await popupUI('document.activeElement.id'), 'codec-vp9');
+    popup.focus();
+    popup.sendInputEvent({ type: 'keyDown', keyCode: 'Space' });
+    popup.sendInputEvent({ type: 'keyUp', keyCode: 'Space' });
+    await waitUntil(
+      () => popupUI('!document.querySelector("#codec-vp9").checked'),
+      'Space toggles the codec checkbox',
+    );
+    let formLoads = 0;
+    const formLoaded = () => formLoads++;
+    tv.on('did-finish-load', formLoaded);
+    await popupUI(
+      'document.querySelector("#codec-av1").click();document.querySelector(".primary").click()',
+    );
+    await closeWait();
+    assert.equal(formLoads, 1);
+    assert.deepEqual(
+      (await shell.executeJavaScript('window.tubevra.getState()')).value.general
+        .codecPreferences,
+      { mode: 'manual', allowedCodecs: [] },
+    );
+    tv.removeListener('did-finish-load', formLoaded);
+    popup = await openOptions();
+    const generalFile = path.join(
+      app.getPath('userData'),
+      'general-settings.json',
+    );
+    fs.renameSync(generalFile, generalFile + '.backup');
+    fs.mkdirSync(generalFile);
+    try {
+      await popupUI(
+        'document.querySelector("#codec-vp9").click();document.querySelector(".primary").click()',
+      );
+      await waitUntil(
+        () =>
+          popupUI(
+            '!!document.querySelector("#codec-options-feedback").textContent && !document.querySelector(".primary").disabled',
+          ),
+        'write error',
+      );
+      assert.equal(
+        await popupUI('document.querySelector("#codec-vp9").checked'),
+        true,
+      );
+    } finally {
+      fs.rmdirSync(generalFile);
+      fs.renameSync(generalFile + '.backup', generalFile);
+    }
+    const realReload = tv.reload.bind(tv);
+    tv.reload = () => {
+      throw Error('Popup reload failure');
+    };
+    await popupUI('document.querySelector(".primary").click()');
+    await waitUntil(
+      () =>
+        popupUI(
+          '!document.querySelector("#codec-options-reload").hidden && !document.querySelector("#codec-options-reload").disabled',
+        ),
+      'reload error',
+    );
+    assert.match(
+      await popupUI(
+        'document.querySelector("#codec-options-feedback").textContent',
+      ),
+      /Saved.*Popup reload failure/,
+    );
+    tv.reload = realReload;
+    await popupUI('document.querySelector("#codec-options-reload").click()');
+    await waitUntil(
+      () =>
+        popupUI(
+          'document.querySelector("#codec-options-feedback").textContent === "Applied."',
+        ),
+      'retry',
+    );
+    popup.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    popup.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    await closeWait();
+    await changeMode('force');
+    assert.doesNotMatch(
+      await ui(
+        'document.querySelector("#codec-mode").parentElement.textContent',
+      ),
+      /Force may prevent playback|Choose which video codecs/,
+    );
+    popup = await openOptions();
+    assert.match(
+      await popupUI('document.body.textContent'),
+      /Choose which video codecs YouTube TV may use/,
+    );
+    assert.equal(
+      await popupUI('document.querySelector("#codec-force-warning") === null'),
+      true,
+    );
+    assert.doesNotMatch(
+      await popupUI('document.body.textContent'),
+      /H\.264|TV · Cobalt|Hardware acceleration not guaranteed/,
+    );
+    assert.equal(
+      await ui(
+        'document.querySelector("#service-error").classList.contains("warning-banner")',
+      ),
+      true,
+    );
+    assert.match(
+      await ui('document.querySelector("#service-error").textContent'),
+      /lack hardware acceleration.*stutter.*CPU/,
+    );
+    mainWindow.setSize(640, 680);
+    mainWindow.setAlwaysOnTop(true);
+    mainWindow.show();
+    mainWindow.focus();
+    popup.focus();
+    assert.equal(
+      await popupUI(
+        'document.querySelector(".settings-dialog").scrollWidth <= innerWidth',
+      ),
+      true,
+    );
+    await popupUI('document.querySelector(".ui-button--cancel").click()');
+    await closeWait();
+    await shell.executeJavaScript(
+      "window.tubevra.setCodecPreferences({mode:'auto',allowedCodecs:['vp9','av1']})",
+    );
+    // The same native host still supports the original RYD settings, with
+    // codec channels denied while the RYD document is active.
+    await ui(
+      'document.querySelector("[data-section=extensions]").click();document.querySelector("[data-control-id=ryd-settings]").click()',
+    );
+    await waitUntil(
+      async () =>
+        webContents
+          .getAllWebContents()
+          .some((c) => c.getURL().endsWith('#extension-settings')) &&
+        (await webContents
+          .getAllWebContents()
+          .find((c) => c.getURL().endsWith('#extension-settings'))!
+          .executeJavaScript(
+            '!!document.querySelector("[data-control-id=ryd-show-with-dock]") && !document.querySelector("[data-control-id=ryd-show-with-dock]").disabled',
+          )),
+      'RYD options',
+    );
+    const rydOptions = webContents
+      .getAllWebContents()
+      .find((c) => c.getURL().endsWith('#extension-settings'))!;
+    const rydEvent = { sender: rydOptions, senderFrame: rydOptions.mainFrame };
+    assert.throws(
+      () => ipcMain._invokeHandlers.get(channels[0])(rydEvent),
+      /Untrusted/,
+    );
+    assert.equal(
+      (await rydOptions.executeJavaScript('window.extensionSettings.get()')).ok,
+      true,
+    );
+    await rydOptions.executeJavaScript(
+      'document.querySelector(".primary").click()',
+    );
+    await waitUntil(
+      () => ui('!document.querySelector("#panel-extensions dialog").open'),
+      'RYD save',
+    );
+    await ui('document.querySelector("[data-section=general]").click()');
+    popup = await openOptions();
+    assert.equal(
+      await popupUI('document.querySelector("#codec-vp9").checked'),
+      true,
+    );
+    await popupUI('document.querySelector(".ui-button--cancel").click()');
+    await closeWait();
     for (const [mode, height] of [
       ['1440p', 1440],
       ['4k', 2160],
@@ -240,24 +572,22 @@ app
     win.setSize(640, 680);
     win.show();
     await new Promise((resolve) => setTimeout(resolve, 400));
-    if (process.env.TUBEVRA_TEST_SKIP_CAPTURE === '1')
-      console.warn(
-        'Settings screenshot explicitly skipped; layout capture remains unverified.',
-      );
-    else
-      fs.writeFileSync(
-        path.resolve('out/verification/cobalt/resolution-settings.png'),
-        (
-          await shell.capturePage().catch((cause) => {
-            throw Error(`Settings screenshot failed: ${String(cause)}`);
-          })
-        ).toPNG(),
-      );
+    assert.equal(
+      await shell.executeJavaScript(`(() => {
+      const button = document.querySelector('#codec-settings-open');
+      const mode = document.querySelector('#codec-mode');
+      const resolution = document.querySelector('#playback-resolution');
+      return mode.getBoundingClientRect().right <= innerWidth && button.getBoundingClientRect().right <= mode.getBoundingClientRect().left && Math.abs(mode.getBoundingClientRect().right - resolution.getBoundingClientRect().right) < 1 && !!mode.parentElement.querySelector('.row-icon svg');
+    })()`),
+      true,
+      'codec widget controls fit the compact settings surface',
+    );
     await shell.executeJavaScript(
       'window.tubevra.setPlaybackResolution("auto")',
     );
     await shell.executeJavaScript('window.tubevra.setSettingsOpen(false)');
     const initial = await read();
+    phase = 'UA and codec preference transitions';
     assert.equal(
       codecProbes,
       2,
@@ -323,6 +653,125 @@ app
     await shell.executeJavaScript('window.tubevra.reloadTV()');
     assert.equal((await read()).hardwareCodecs.status, 'ready');
     assert.equal(codecProbes, 3, 'GPU loss must invalidate cached discovery');
+    // New preference API is restricted to the local shell and validates all data.
+    const setCodecs = ipcMain._invokeHandlers.get(
+      'tubevra:set-codec-preferences',
+    );
+    for (const event of [
+      { sender: tv, senderFrame: tv.mainFrame },
+      { sender: shell, senderFrame: tv.mainFrame },
+      { sender: shell, senderFrame: { url: shell.getURL() } },
+    ])
+      assert.throws(
+        () => setCodecs(event, { mode: 'force', allowedCodecs: [] }),
+        /Untrusted/,
+      );
+    const trusted = { sender: shell, senderFrame: shell.mainFrame };
+    for (const args of [
+      [],
+      [null],
+      [{ mode: 'manual', allowedCodecs: ['h264'] }],
+      [{ mode: 'force', allowedCodecs: [] }, 'extra'],
+    ])
+      assert.equal((await setCodecs(trusted, ...args)).ok, false);
+    const set = (mode: string, allowedCodecs: string[]) =>
+      shell.executeJavaScript(
+        `window.tubevra.setCodecPreferences(${JSON.stringify({ mode, allowedCodecs })})`,
+      );
+    let loads = 0;
+    const countLoad = () => loads++;
+    tv.on('did-finish-load', countLoad);
+    await set('auto', []);
+    assert.equal(loads, 0, 'inactive Auto list does not reload');
+    await set('manual', []);
+    assert.equal(loads, 1);
+    assert.equal((await read()).av1, false);
+    assert.equal((await read()).vp9profile2, false);
+    assert.equal((await read()).valid, false);
+    await set('manual', []);
+    assert.equal(loads, 1, 'identical policy does not reload');
+    await set('force', ['av1']);
+    assert.equal((await read()).hardwareCodecs, null);
+    assert.equal((await read()).av1, true);
+    assert.equal((await read()).vp9profile2, false);
+    assert.equal((await read()).absurd, false);
+    assert.equal((await read()).codec, false);
+    assert.equal(codecProbes, 3, 'Force does not probe the GPU');
+    app.emit('child-process-gone', {}, { type: 'GPU' });
+    assert.equal(
+      (await shell.executeJavaScript('window.tubevra.getState()')).value
+        .codecWarning,
+      null,
+    );
+    await shell.executeJavaScript('window.tubevra.reloadTV()');
+    assert.equal(codecProbes, 3, 'GPU loss and reload in Force do not probe');
+    // Persistence succeeds even when applying the new document fails.
+    const reload = tv.reload.bind(tv);
+    tv.reload = () => {
+      throw Error('Forced codec reload failure');
+    };
+    assert.equal((await set('manual', ['vp9'])).ok, false);
+    const failed = (await shell.executeJavaScript('window.tubevra.getState()'))
+      .value;
+    assert.equal(failed.general.codecPreferences.mode, 'manual');
+    assert.equal(failed.codecReloadRequired, true);
+    assert.match(failed.error, /Forced codec reload failure/);
+    tv.reload = reload;
+    await shell.executeJavaScript('window.tubevra.reloadTV()');
+    assert.equal(
+      (await shell.executeJavaScript('window.tubevra.getState()')).value
+        .codecReloadRequired,
+      false,
+    );
+    // A non-Cobalt document retains native behavior even with a manual block list.
+    await shell.executeJavaScript(
+      "window.tubevra.updateUserAgents({type:'select',id:'lg_webos'})",
+    );
+    const before = loads;
+    await set('manual', []);
+    assert.equal(loads, before);
+    assert.equal((await read()).hardwareCodecs, undefined);
+    assert.equal((await read()).valid, true);
+    await set('auto', ['vp9', 'av1']);
+    await shell.executeJavaScript(
+      `window.tubevra.updateUserAgents({type:'select',id:${JSON.stringify(custom)}})`,
+    );
+    tv.removeListener('did-finish-load', countLoad);
+    // GPU loss while discovery is pending cannot publish a late ready result.
+    await set('force', ['av1']);
+    app.emit('child-process-gone', {}, { type: 'GPU' });
+    const normalGPUInfo = app.getGPUInfo;
+    let releaseGPU: ((value: any) => void) | undefined;
+    let enteredProbe: () => void;
+    const probing = new Promise<void>((resolve) => {
+      enteredProbe = resolve;
+    });
+    app.getGPUInfo = () =>
+      new Promise((resolve) => {
+        releaseGPU = resolve;
+        enteredProbe();
+      });
+    const pendingManual = set('manual', []);
+    await probing;
+    app.emit('child-process-gone', {}, { type: 'GPU' });
+    assert.equal((await pendingManual).ok, true);
+    assert.equal((await read()).hardwareCodecs.status, 'error');
+    assert.equal(
+      (await read()).av1,
+      false,
+      'manual blocks survive detection failure',
+    );
+    assert.equal((await read()).valid, false);
+    releaseGPU!({});
+    app.getGPUInfo = normalGPUInfo;
+    const queued = await shell.executeJavaScript(`Promise.all([
+      window.tubevra.setCodecPreferences({mode:'manual',allowedCodecs:['vp9']}),
+      window.tubevra.setCodecPreferences({mode:'force',allowedCodecs:['av1']})
+    ])`);
+    assert.ok(queued.every((result: any) => result.ok));
+    assert.equal((await read()).hardwareCodecs, null);
+    assert.equal((await read()).av1, true);
+    await set('auto', ['vp9', 'av1']);
     const failurePreload = path.join(
       app.getPath('userData'),
       'failure-preload.cjs',
@@ -357,6 +806,13 @@ app
     );
     assert.match(failureState.value.error, /YouTube preload failed:.*redefine/);
     assert.equal(
+      await ui(
+        'document.querySelector("#service-error").classList.contains("warning-banner")',
+      ),
+      false,
+      'actual application errors remain red',
+    );
+    assert.equal(
       await shell.executeJavaScript(
         'document.querySelector("#service-error").hidden',
       ),
@@ -368,22 +824,24 @@ app
       tv.reload();
     });
     assert.equal((await read()).absurd, false);
-    BrowserWindow.getAllWindows()
-      .find((window) => window.webContents === shell)!
-      .destroy();
+    mainWindow.destroy();
     assert.equal(ipcMain.listenerCount(HARDWARE_CODECS_IPC.bootstrap), 0);
     assert.equal(ipcMain.listenerCount(HARDWARE_CODECS_IPC.failure), 0);
+    assert.equal(
+      ipcMain._invokeHandlers.has('tubevra:set-codec-preferences'),
+      false,
+    );
     fs.writeFileSync(
       resultFile,
       JSON.stringify({
         passed: true,
-        screenshotSkipped: process.env.TUBEVRA_TEST_SKIP_CAPTURE === '1',
         elapsedMs: Date.now() - started,
         checks: [
           'first page script',
           'native AV1/VP9 profile filtering and error/disabled fallback before first page script',
           'hardware codec bootstrap before first script, failure/retry and GPU invalidation',
           'runtime acceleration independent of pending preference, cached UA/resolution transitions',
+          'manual and force preferences, validated IPC, one reload, failure recovery, GPU race and queued mode changes',
           'native codec rejection',
           'UA transitions and custom UA',
           'reload',

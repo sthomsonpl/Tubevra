@@ -40,6 +40,7 @@ export function mountExtensions(root: HTMLElement) {
   blocker.setAttribute('aria-label', 'Return YouTube Dislike settings');
   root.append(blocker);
   window.extensionSettingsHost.onClosed((error) => {
+    if (!blocker.open) return;
     blocker.close();
     if (error) {
       operationError = error;

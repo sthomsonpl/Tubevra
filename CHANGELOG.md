@@ -1,7 +1,7 @@
 # Changes — Unreleased
 
 ### Added
-
+-Added video codec selection with Auto, Manual and Force modes.
 
 ### Changed
 -Redesigned settings with a glass appearance.

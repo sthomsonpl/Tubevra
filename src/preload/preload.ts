@@ -8,7 +8,10 @@ import {
 } from '../shared/extension-settings';
 
 const extensionSettingsHost: ExtensionSettingsHostAPI = {
-  open: () => ipcRenderer.invoke(EXTENSION_SETTINGS_IPC.open),
+  open: (kind) =>
+    kind === undefined
+      ? ipcRenderer.invoke(EXTENSION_SETTINGS_IPC.open)
+      : ipcRenderer.invoke(EXTENSION_SETTINGS_IPC.open, kind),
   close: () => ipcRenderer.invoke(EXTENSION_SETTINGS_IPC.close),
   onClosed(listener) {
     const handler = (_event: Electron.IpcRendererEvent, error?: string) =>
@@ -21,6 +24,8 @@ const extensionSettingsHost: ExtensionSettingsHostAPI = {
 contextBridge.exposeInMainWorld('extensionSettingsHost', extensionSettingsHost);
 
 const api: TubevraAPI = {
+  setCodecPreferences: (value) =>
+    ipcRenderer.invoke(IPC.setCodecPreferences, value),
   toggleFullscreen: () => ipcRenderer.invoke(IPC.toggleFullscreen),
   setPlaybackResolution: (value) =>
     ipcRenderer.invoke(IPC.setPlaybackResolution, value),

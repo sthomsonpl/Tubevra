@@ -8,6 +8,7 @@ export function createSettingsDialog(
     onSave: () => void;
     onCancel?: () => void;
     saveLabel?: string;
+    subtitle?: string;
   },
 ) {
   const dialog = document.createElement('dialog');
@@ -24,7 +25,7 @@ export function createSettingsDialog(
   dialog.setAttribute('aria-labelledby', heading.id);
   const subtitle = document.createElement('p');
   subtitle.className = 'heading-subtitle';
-  subtitle.textContent = 'Add-on settings';
+  subtitle.textContent = actions.subtitle ?? 'Add-on settings';
   header.append(heading, subtitle);
   const footer = document.createElement('div');
   footer.className = 'settings-dialog-actions';

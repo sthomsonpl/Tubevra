@@ -28,7 +28,10 @@ import { resolveTVDisplay, selectTVDisplay } from './tv-display';
 import { connectTVDisplay } from './tv-display-bridge';
 import { createHardwareCodecDetector } from './media-capabilities';
 import { connectHardwareCodecs } from './media-capabilities-bridge';
-import { hasCobaltUserAgent } from '../shared/media-capabilities';
+import {
+  hasCobaltUserAgent,
+  type CodecBootstrapSnapshot,
+} from '../shared/media-capabilities';
 import { createToolbarAutoHide } from './toolbar-auto-hide';
 import { connectOverlayAnimation } from './overlay-animation';
 import { TOOLBAR_STYLE } from './toolbar-style';
@@ -174,6 +177,18 @@ export async function createTVWindow(
       canOpen: () => settingsOpen && !playbackFullscreen,
       getPreference: () => extensions.snapshot().ryd.showWithDock,
       savePreference: (value) => extensions.setRydShowWithDock(value),
+      getCodecs: () => ({
+        preferences: general.snapshot().codecPreferences,
+        reloadRequired: codecReloadRequired,
+        error,
+      }),
+      saveCodecs: (value) =>
+        queueCodecChange(() => applyCodecPreferences(value)),
+      reloadCodecs: () =>
+        queueCodecChange(async () => {
+          const url = currentTVURL();
+          await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
+        }),
       onVisibility: () => overlays.refresh(),
     },
   );
@@ -272,6 +287,7 @@ export async function createTVWindow(
 
   let error: string | null = null;
   let codecWarning: string | null = null;
+  let codecReloadRequired = false;
   let playbackFullscreen = false;
   let settingsOpen = false;
   let loading = true;
@@ -322,6 +338,7 @@ export async function createTVWindow(
     loading,
     error,
     codecWarning,
+    codecReloadRequired,
   });
   const publish = () => {
     if (!mainWindow.isDestroyed()) {
@@ -413,16 +430,28 @@ export async function createTVWindow(
     publish();
   };
   const codecBridge = connectHardwareCodecs(ipcMain, contents, warnCodecs);
+  let codecBootstrap: CodecBootstrapSnapshot | undefined;
+  let loadRevision = 0;
+  let gpuRevision = 0;
   const onChildProcessGone = (
     _event: Electron.Event,
     details: Electron.Details,
   ) => {
     if (details.type !== 'GPU') return;
     codecDetector.invalidate();
-    if (hasCobaltUserAgent(store.activeUserAgent())) {
+    gpuRevision++;
+    if (
+      codecBootstrap &&
+      codecBootstrap.preferences.mode !== 'force' &&
+      hasCobaltUserAgent(store.activeUserAgent())
+    ) {
       const message =
         'Hardware codec filtering unavailable: GPU process stopped. Reload YouTube to retry.';
-      codecBridge.update({ status: 'error', error: message });
+      codecBootstrap = {
+        preferences: codecBootstrap.preferences,
+        hardware: { status: 'error', error: message },
+      };
+      codecBridge.update(codecBootstrap);
       warnCodecs(message);
     }
   };
@@ -447,6 +476,7 @@ export async function createTVWindow(
   }
 
   const loadTV = async (url: string, reload = false) => {
+    const revision = ++loadRevision;
     if (contents.isDestroyed())
       throw new Error('YouTube view closed. Restart Tubevra to reopen it.');
     error = null;
@@ -456,13 +486,36 @@ export async function createTVWindow(
     try {
       codecWarning = null;
       codecBridge.update(undefined);
+      codecBootstrap = undefined;
       if (hasCobaltUserAgent(store.activeUserAgent())) {
-        const codecs = await codecDetector.detect();
-        if (mainWindow.isDestroyed() || contents.isDestroyed()) return;
-        codecBridge.update(codecs);
-        if (codecs.status === 'error')
+        const preferences = general.snapshot().codecPreferences;
+        const gpu = gpuRevision;
+        const hardware =
+          preferences.mode === 'force' ? null : await codecDetector.detect();
+        if (
+          revision !== loadRevision ||
+          mainWindow.isDestroyed() ||
+          contents.isDestroyed()
+        )
+          return;
+        codecBootstrap =
+          preferences.mode === 'force'
+            ? { preferences: { ...preferences, mode: 'force' }, hardware: null }
+            : {
+                preferences: { ...preferences, mode: preferences.mode },
+                hardware:
+                  gpu === gpuRevision
+                    ? hardware!
+                    : {
+                        status: 'error',
+                        error:
+                          'GPU process stopped during codec detection. Reload YouTube to retry.',
+                      },
+              };
+        codecBridge.update(codecBootstrap);
+        if (codecBootstrap.hardware?.status === 'error')
           warnCodecs(
-            `Hardware codec filtering unavailable: ${codecs.error} Native codec support will be used.`,
+            `Hardware codec filtering unavailable: ${codecBootstrap.hardware.error} Native codec support will be used for allowed codecs.`,
           );
       }
       if (mainWindow.isDestroyed() || contents.isDestroyed()) return;
@@ -504,12 +557,15 @@ export async function createTVWindow(
         await contents.loadURL(url, { userAgent: store.activeUserAgent() });
       }
       if (error) throw new Error(error);
+      if (revision !== loadRevision) return;
       if (mainWindow.isDestroyed()) return;
       loading = false;
+      codecReloadRequired = false;
       syncVisibility();
       if (!settingsOpen) contents.focus();
       publish();
     } catch (cause) {
+      if (revision !== loadRevision) return;
       const message =
         cause instanceof Error ? cause.message : 'YouTube failed to load.';
       reportError(message);
@@ -675,6 +731,41 @@ export async function createTVWindow(
     const url = currentTVURL();
     await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
   });
+  async function applyCodecPreferences(value: unknown) {
+    const previous = general.snapshot().codecPreferences;
+    await general.setCodecPreferences(value);
+    const next = general.snapshot().codecPreferences;
+    const changed =
+      previous.mode !== next.mode ||
+      (next.mode !== 'auto' &&
+        (previous.allowedCodecs.length !== next.allowedCodecs.length ||
+          previous.allowedCodecs.some(
+            (codec) => !next.allowedCodecs.includes(codec),
+          )));
+    if (changed && hasCobaltUserAgent(store.activeUserAgent()))
+      codecReloadRequired = true;
+    publish();
+    if (!changed || !hasCobaltUserAgent(store.activeUserAgent())) return;
+    const url = currentTVURL();
+    await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
+  }
+  function queueCodecChange(action: () => Promise<void>) {
+    const operation = pending.then(async () => {
+      if (mainWindow.isDestroyed()) throw Error('The window was closed.');
+      await action();
+      return {
+        preferences: general.snapshot().codecPreferences,
+        reloadRequired: codecReloadRequired,
+        error,
+      };
+    });
+    pending = operation.catch(() => {});
+    return operation;
+  }
+  handle(IPC.setCodecPreferences, async (...args) => {
+    if (args.length !== 1) throw Error('Expected one codec preference object.');
+    await applyCodecPreferences(args[0]);
+  });
   handle(IPC.setHardwareAcceleration, async (...args) => {
     if (args.length !== 1)
       throw new Error('Expected one hardware acceleration flag.');
@@ -820,6 +911,7 @@ export async function createTVWindow(
   local.webContents.session.setPermissionCheckHandler(() => false);
 
   mainWindow.on('closed', () => {
+    loadRevision++;
     overlays.dispose();
     dock.dispose();
     ratings.dispose();
@@ -837,6 +929,7 @@ export async function createTVWindow(
       IPC.toggleFullscreen,
       IPC.setHardwareAcceleration,
       IPC.setPlaybackResolution,
+      IPC.setCodecPreferences,
       IPC.restartApp,
       IPC.openProjectGitHub,
       IPC.openPrivacyPolicy,

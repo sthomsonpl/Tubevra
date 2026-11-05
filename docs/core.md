@@ -90,19 +90,31 @@ prevent the tests from running; it must not be worked around in application code
 
 General settings persist `playbackResolution` (`auto`, `1440p`, `4k`, `8k`). Existing version-1 files without this field use `auto`. Auto retains the largest detected physical display at window creation. Manual modes use a height of 1440, 2160 or 4320 physical pixels and a rounded width preserving that display’s aspect ratio. The native viewport and DPR remain unchanged. Screen, player configuration and Cobalt compatibility share the same dimensions. Validated local-shell IPC saves the preference, updates the bootstrap snapshot and reloads the current TV document; settings stay open. Reload errors remain visible and do not undo a committed preference.
 
-## Hardware codec discovery and bootstrap
+## Video codecs
 
-For Cobalt, the main process detects hardware H.264, VP9 and AV1 decoder profiles
-through an isolated `chrome://gpu` view before loading YouTube. Validated results
-reach the isolated preload through restricted IPC. This private Chromium interface
-requires verification when upgrading Electron.
+Codec preferences apply only to YouTube TV with a Cobalt User-Agent:
 
-The Cobalt adapter rejects recognized video profiles without hardware decoding
-support, while preserving native MIME validation and existing playback limits.
-Disabled acceleration, detection errors and unrecognized profiles retain native
-codec handling. Detection errors and unrecognized profiles produce a settings
-warning.
+- Auto retains native Chromium and hardware-profile checks.
+- Manual blocks unselected VP9/AV1 families; selected codecs still pass those checks.
+- Force skips hardware discovery and may override native rejection for selected,
+  recognized VP9/AV1 codecs. H.264 cannot be deselected and retains native checks
+  in Force.
 
-Results are cached for the current session and invalidated after GPU process loss.
-Reloading retries failed detection; changing hardware acceleration requires a
-restart. Other User-Agents remain unaffected.
+Force accepts only single-codec MP4/WebM queries with validated basic codec
+fields and parameters. Mixed lists, extended colour strings and unknown profiles
+retain native handling. Playback limits remain enforced. Force does not install
+decoders or guarantee playback or stream selection.
+
+`codecPreferences` stores mode and list atomically. Older version-1 files default
+to Auto with VP9 and AV1 selected, without rewriting the file. Auto retains the
+manual list; an empty list is valid. Invalid data never overwrites configuration.
+
+Validated local IPC saves preferences and reloads the current Cobalt TV document
+only when the effective policy changes. Reload errors preserve saved values;
+`codecReloadRequired` exposes the need to retry.
+
+Auto/Manual discover hardware profiles through an isolated `chrome://gpu` view.
+Results are cached per session and invalidated after GPU loss. Disabled or failed
+detection retains native checks without removing Manual blocks. Detection errors
+and unknown profiles produce warnings. Force uses `hardware: null`; other UAs
+remain unaffected. Recheck the private GPU schema when upgrading Electron.

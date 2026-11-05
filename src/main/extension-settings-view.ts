@@ -3,6 +3,11 @@ import type { BrowserWindow, WebContents, IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { EXTENSION_SETTINGS_IPC as IPC } from '../shared/extension-settings';
 import type { Result } from '../shared/api';
+import type { CodecSettingsState } from '../shared/extension-settings';
+import {
+  isCodecPreferences,
+  type CodecPreferences,
+} from '../shared/media-capabilities';
 
 export function createExtensionSettingsView(
   window: BrowserWindow,
@@ -12,10 +17,14 @@ export function createExtensionSettingsView(
     canOpen(): boolean;
     getPreference(): boolean;
     savePreference(value: boolean): Promise<unknown>;
+    getCodecs(): CodecSettingsState;
+    saveCodecs(value: CodecPreferences): Promise<CodecSettingsState>;
+    reloadCodecs(): Promise<CodecSettingsState>;
     onVisibility(open: boolean): void;
   },
 ) {
-  const url = `${hostURL}#extension-settings`;
+  let kind: 'ryd' | 'codecs' = 'ryd';
+  let url = `${hostURL}#extension-settings`;
   const view = new WebContentsView({
     webPreferences: {
       preload: path.join(__dirname, 'extension-settings-preload.cjs'),
@@ -63,8 +72,15 @@ export function createExtensionSettingsView(
     event.senderFrame === contents.mainFrame &&
     event.senderFrame.url === target;
   const fromHost = (event: IpcMainInvokeEvent) => matches(event, host, hostURL);
-  const assertOptions = (event: IpcMainInvokeEvent) => {
-    if (!active || !matches(event, view.webContents, url))
+  const assertOptions = (
+    event: IpcMainInvokeEvent,
+    expected?: 'ryd' | 'codecs',
+  ) => {
+    if (
+      !active ||
+      (expected && kind !== expected) ||
+      !matches(event, view.webContents, url)
+    )
       throw Error('Untrusted extension settings request.');
   };
   const close = (force = false, error?: string) => {
@@ -95,9 +111,12 @@ export function createExtensionSettingsView(
   ipcMain.handle(IPC.open, (event, ...args) => {
     if (!fromHost(event)) throw Error('Untrusted extension settings host.');
     return result(async () => {
-      if (args.length) throw Error('Unexpected arguments.');
+      if (args.length > 1 || (args.length === 1 && args[0] !== 'codecs'))
+        throw Error('Unexpected arguments.');
       if (!options.canOpen()) throw Error('Open application settings first.');
       if (active || saving) throw Error('Extension settings are already busy.');
+      kind = args[0] === 'codecs' ? 'codecs' : 'ryd';
+      url = `${hostURL}#${kind === 'codecs' ? 'codec-settings' : 'extension-settings'}`;
       active = true;
       const opening = ++version;
       desiredHeight = 244;
@@ -105,7 +124,11 @@ export function createExtensionSettingsView(
       options.onVisibility(true);
       try {
         // A fresh local document starts every draft from the saved preference.
-        if (view.webContents.getURL() === url) {
+        if (view.webContents.getURL()) {
+          // Changing only the hash can retain the old renderer and draft.
+          // Select the route, then always create a fresh options document.
+          if (view.webContents.getURL() !== url)
+            await view.webContents.loadURL(url);
           await new Promise<void>((resolve, reject) => {
             const contents = view.webContents;
             const clear = () => {
@@ -151,14 +174,14 @@ export function createExtensionSettingsView(
     });
   });
   ipcMain.handle(IPC.get, (event, ...args) => {
-    assertOptions(event);
+    assertOptions(event, 'ryd');
     return result(() => {
       if (args.length) throw Error('Unexpected arguments.');
       return options.getPreference();
     });
   });
   ipcMain.handle(IPC.save, (event, ...args) => {
-    assertOptions(event);
+    assertOptions(event, 'ryd');
     return result(async () => {
       if (args.length !== 1 || typeof args[0] !== 'boolean')
         throw Error('Expected one RYD visibility flag.');
@@ -170,6 +193,40 @@ export function createExtensionSettingsView(
         saving = false;
       }
       return null;
+    });
+  });
+  ipcMain.handle(IPC.getCodecs, (event, ...args) => {
+    assertOptions(event, 'codecs');
+    return result(() => {
+      if (args.length) throw Error('Unexpected arguments.');
+      return options.getCodecs();
+    });
+  });
+  ipcMain.handle(IPC.saveCodecs, (event, ...args) => {
+    assertOptions(event, 'codecs');
+    return result(async () => {
+      if (args.length !== 1 || !isCodecPreferences(args[0]))
+        throw Error('Invalid codec preferences.');
+      if (saving) throw Error('Settings are already saving.');
+      saving = true;
+      try {
+        return await options.saveCodecs(args[0]);
+      } finally {
+        saving = false;
+      }
+    });
+  });
+  ipcMain.handle(IPC.reloadCodecs, (event, ...args) => {
+    assertOptions(event, 'codecs');
+    return result(async () => {
+      if (args.length) throw Error('Unexpected arguments.');
+      if (saving) throw Error('Settings are already saving.');
+      saving = true;
+      try {
+        return await options.reloadCodecs();
+      } finally {
+        saving = false;
+      }
     });
   });
   ipcMain.handle(IPC.close, (event, ...args) => {
@@ -237,6 +294,9 @@ export function createExtensionSettingsView(
         IPC.save,
         IPC.close,
         IPC.resize,
+        IPC.getCodecs,
+        IPC.saveCodecs,
+        IPC.reloadCodecs,
       ])
         ipcMain.removeHandler(channel);
       if (!view.webContents.isDestroyed()) view.webContents.close();

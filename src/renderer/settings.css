@@ -348,6 +348,14 @@
   flex: none;
 }
 
+#panel-general {
+  overflow-y: auto;
+}
+
+#panel-general > .widget-box {
+  flex: none;
+}
+
 .general-restart .row-icon {
   color: #facc15;
   background: #facc1512;

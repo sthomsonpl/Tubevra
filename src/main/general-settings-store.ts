@@ -3,12 +3,19 @@ import { readFileSync } from 'node:fs';
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { GeneralSettingsState } from '../shared/api';
+import {
+  DEFAULT_CODEC_PREFERENCES,
+  freezeCodecPreferences,
+  isCodecPreferences,
+  type CodecPreferences,
+} from '../shared/media-capabilities';
 
 import {
   isPlaybackResolution,
   type PlaybackResolution,
 } from '../shared/tv-display';
 interface Settings {
+  codecPreferences: CodecPreferences;
   playbackResolution: PlaybackResolution;
   version: 1;
   hardwareAcceleration: boolean;
@@ -29,6 +36,7 @@ export class GeneralSettingsStore {
   static open(userData: string) {
     const file = path.join(userData, 'general-settings.json');
     let settings: Settings = {
+      codecPreferences: DEFAULT_CODEC_PREFERENCES,
       version: 1,
       hardwareAcceleration: true,
       playbackResolution: 'auto',
@@ -48,15 +56,22 @@ export class GeneralSettingsStore {
         typeof value.hardwareAcceleration !== 'boolean' ||
         ('playbackResolution' in value &&
           !isPlaybackResolution(value.playbackResolution)) ||
+        ('codecPreferences' in value &&
+          !isCodecPreferences(value.codecPreferences)) ||
         Object.keys(value).some(
           (key) =>
             key !== 'version' &&
             key !== 'hardwareAcceleration' &&
+            key !== 'codecPreferences' &&
             key !== 'playbackResolution',
         )
       )
         throw new Error('Unsupported or invalid general configuration.');
       settings = {
+        codecPreferences:
+          'codecPreferences' in value
+            ? freezeCodecPreferences(value.codecPreferences)
+            : DEFAULT_CODEC_PREFERENCES,
         version: 1,
         playbackResolution:
           'playbackResolution' in value
@@ -76,6 +91,7 @@ export class GeneralSettingsStore {
 
   snapshot(): GeneralSettingsState {
     return {
+      codecPreferences: this.settings.codecPreferences,
       playbackResolution: this.settings.playbackResolution,
       hardwareAcceleration: this.settings.hardwareAcceleration,
       restartRequired:
@@ -89,6 +105,19 @@ export class GeneralSettingsStore {
         throw new Error('Expected a hardware acceleration flag.');
       return { ...this.settings, hardwareAcceleration: enabled };
     });
+  }
+  setCodecPreferences(value: unknown): Promise<GeneralSettingsState> {
+    // Own the validated request before it waits for other configuration writes.
+    let preferences: CodecPreferences;
+    try {
+      preferences = freezeCodecPreferences(value);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    return this.update(() => ({
+      ...this.settings,
+      codecPreferences: preferences,
+    }));
   }
   setPlaybackResolution(value: unknown): Promise<GeneralSettingsState> {
     return this.update(() => {

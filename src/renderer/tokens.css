@@ -22,6 +22,9 @@
   --border-active: #34d39945;
   --text-active: #a7f3d0;
   --danger: #f87171;
+  --warning-text: #facc15;
+  --warning-bg: #facc1510;
+  --warning-border: #facc1533;
 }
 
 .glass-active {
@@ -51,6 +54,10 @@
   --glass-edge: #ffffff38;
   --glass-start: #ffffff17;
   --glass-end: #ffffff03;
+  --checkbox-glass-start: #ffffff0a;
+  --checkbox-selected: #aab8d50a;
+  --checkbox-hover: #b5c1d512;
+  --checkbox-selected-hover: #b5c1d51a;
   --glass-radius: 26px;
   --overlay-text: #f4f5f7;
   --overlay-muted: #d4d8e1;

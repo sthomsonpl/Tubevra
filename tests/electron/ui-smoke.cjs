@@ -62,12 +62,18 @@ async function waitFor(predicate, description) {
 }
 async function capture(win, name) {
   await new Promise((resolve) => setTimeout(resolve, 700));
-  const sources = await desktopCapturer.getSources({
-    types: ['window'],
-    thumbnailSize: { width: 1600, height: 1200 },
-  });
-  const source = sources.find((entry) => entry.id === win.getMediaSourceId());
-  assert.ok(source && !source.thumbnail.isEmpty());
+  // Native window sources can temporarily disappear during view/fullscreen
+  // transitions. Require the real window thumbnail before taking the snapshot.
+  const source = await waitFor(async () => {
+    const sources = await desktopCapturer.getSources({
+      types: ['window'],
+      thumbnailSize: { width: 1600, height: 1200 },
+    });
+    const current = sources.find(
+      (entry) => entry.id === win.getMediaSourceId(),
+    );
+    return current && !current.thumbnail.isEmpty() ? current : null;
+  }, `window capture: ${name}`);
   fs.writeFileSync(path.join(output, `${name}.png`), source.thumbnail.toPNG());
 }
 
