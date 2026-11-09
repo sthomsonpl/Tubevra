@@ -168,6 +168,7 @@ export async function createTVWindow(
     shellURL + '#ratings',
     extensions,
     () => updateRatings(),
+    () => general.snapshot().language,
   );
   const extensionSettings = createExtensionSettingsView(
     mainWindow,
@@ -175,6 +176,7 @@ export async function createTVWindow(
     shellURL,
     {
       canOpen: () => settingsOpen && !playbackFullscreen,
+      getLanguage: () => general.snapshot().language,
       getPreference: () => extensions.snapshot().ryd.showWithDock,
       savePreference: (value) => extensions.setRydShowWithDock(value),
       getCodecs: () => ({
@@ -579,9 +581,10 @@ export async function createTVWindow(
   const handle = (
     channel: string,
     action: (...args: unknown[]) => Promise<void> | void,
+    authorize = assertShell,
   ) => {
     ipcMain.handle(channel, (event, ...args): Promise<Result<AppState>> => {
-      assertShell(event);
+      authorize(event);
       const operation = pending.then(async (): Promise<Result<AppState>> => {
         try {
           if (mainWindow.isDestroyed())
@@ -720,6 +723,20 @@ export async function createTVWindow(
       };
     }
   });
+  handle(
+    IPC.setLanguage,
+    async (...args) => {
+      if (args.length !== 1) throw new Error('Expected one language.');
+      await general.setLanguage(args[0]);
+      publish();
+      ratings.publishLanguage();
+    },
+    (event) => {
+      assertShell(event);
+      if (event.sender !== local.webContents)
+        throw new Error('Untrusted language settings sender.');
+    },
+  );
   handle(IPC.setPlaybackResolution, async (...args) => {
     if (args.length !== 1) throw new Error('Expected one playback resolution.');
     const previous = general.snapshot().playbackResolution;
@@ -926,6 +943,7 @@ export async function createTVWindow(
       .catch((cause) => console.error('Extension shutdown failed:', cause));
     for (const channel of [
       IPC.getState,
+      IPC.setLanguage,
       IPC.toggleFullscreen,
       IPC.setHardwareAcceleration,
       IPC.setPlaybackResolution,

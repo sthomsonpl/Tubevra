@@ -3,53 +3,37 @@ import { PROJECT_GITHUB_URL, PRIVACY_POLICY_URL } from '../shared/api';
 import { mountExtensions } from './extensions/settings';
 import { createWidgetToggle } from './widgets';
 import { mountCodecSettings } from './codec-settings';
+import { isLanguage } from '../shared/i18n/language';
+import type { Localization } from './localization';
 
 const tubevraIcon = new URL('../../assets/icon/icon.ico', import.meta.url).href;
 
 type SectionId = 'general' | 'tv' | 'user-agents' | 'extensions' | 'about';
 type PresetTab = 'default' | 'user';
 
-const SECTION_META: Record<SectionId, { title: string; subtitle: string }> = {
-  about: {
-    title: 'About',
-    subtitle: 'Application version and project information.',
-  },
-  extensions: {
-    title: 'Add-ons',
-    subtitle: 'Manage built-in add-ons for YouTube TV.',
-  },
-  general: {
-    title: 'General',
-    subtitle: 'Application preferences and quick actions.',
-  },
-  tv: {
-    title: 'TV',
-    subtitle: 'YouTube Leanback interface settings.',
-  },
-  'user-agents': {
-    title: 'User Agents',
-    subtitle: 'Choose how Tubevra identifies itself to YouTube TV.',
-  },
+const SECTION_KEYS: Record<SectionId, string> = {
+  about: 'settings.about',
+  extensions: 'addons',
+  general: 'settings.general',
+  tv: 'settings.tv',
+  'user-agents': 'presets',
 };
 
-const PRESET_HINTS: Record<
-  string,
-  { kind: 'console' | 'tv' | 'box'; sub: string }
-> = {
-  ps4: { kind: 'console', sub: 'Console • Leanback Shell' },
-  xbox: { kind: 'console', sub: 'Console • Cobalt Engine' },
-  cobalt: { kind: 'box', sub: 'Chromecast • Android TV 14' },
-  tizen: { kind: 'tv', sub: 'Samsung Smart TV • Tizen 7.0' },
-  lg_webos: { kind: 'tv', sub: 'LG Smart TV • webOS' },
-  firetv: { kind: 'box', sub: 'Amazon Fire TV • Fire OS' },
-  apple_tv: { kind: 'box', sub: 'Apple TV • tvOS 17' },
+const PRESET_KINDS: Record<string, 'console' | 'tv' | 'box'> = {
+  ps4: 'console',
+  xbox: 'console',
+  cobalt: 'box',
+  tizen: 'tv',
+  lg_webos: 'tv',
+  firetv: 'box',
+  apple_tv: 'box',
 };
 
 function createDeviceIcon(presetId: string, builtIn: boolean): SVGSVGElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
-  const kind = builtIn ? (PRESET_HINTS[presetId]?.kind ?? 'tv') : 'custom';
+  const kind = builtIn ? (PRESET_KINDS[presetId] ?? 'tv') : 'custom';
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   if (kind === 'console') {
     path.setAttribute(
@@ -73,7 +57,8 @@ function createDeviceIcon(presetId: string, builtIn: boolean): SVGSVGElement {
   return svg;
 }
 
-export function mountSettings(root: HTMLElement) {
+export function mountSettings(root: HTMLElement, locale: Localization) {
+  const { t } = locale;
   document.body.className = 'settings-page';
   root.innerHTML = `<main class="app-shell">
     <section id="connection" class="connection" aria-labelledby="connection-title">
@@ -83,20 +68,20 @@ export function mountSettings(root: HTMLElement) {
             <img src="${tubevraIcon}" alt="" width="28" height="28" />
           </span>
           <span class="brand-text">Tubevra</span>
-          <span class="brand-pill">TV Mode</span>
+          <span class="brand-pill" data-i18n="common.tvMode"></span>
         </div>
-        <h1 id="connection-title">Your big-screen YouTube.</h1>
-        <p id="connection-status" class="connection-status" role="status">Connecting to YouTube TV…</p>
+        <h1 id="connection-title" data-i18n="connection.title"></h1>
+        <p id="connection-status" class="connection-status" role="status" data-i18n="connection.connecting"></p>
         <div class="actions">
-          <button id="retry" class="ui-button primary" type="button">Try again</button>
-          <button id="open-settings" class="ui-button secondary" type="button">Settings</button>
+          <button id="retry" class="ui-button primary" type="button" data-i18n="connection.retry"></button>
+          <button id="open-settings" class="ui-button secondary" type="button" data-i18n="common.settings"></button>
         </div>
       </div>
     </section>
 
     <section id="settings-screen" class="settings-screen" aria-labelledby="settings-title" hidden>
       <div class="settings-frame">
-        <aside class="settings-sidebar" aria-label="Settings navigation">
+        <aside class="settings-sidebar" data-i18n-aria-label="settings.navigation">
           <div class="sidebar-top">
             <div class="brand">
               <span class="brand-mark" aria-hidden="true">
@@ -104,51 +89,51 @@ export function mountSettings(root: HTMLElement) {
               </span>
               <div class="brand-copy">
                 <span class="brand-text">Tubevra</span>
-                <span class="brand-sub">Settings</span>
+                <span class="brand-sub" data-i18n="common.settings"></span>
               </div>
             </div>
 
-            <nav class="sidebar-nav" aria-label="Settings sections">
+            <nav class="sidebar-nav" data-i18n-aria-label="settings.sections">
               <button type="button" class="ui-button nav-item ui-nav-item" data-section="general" aria-current="false">
                 <span class="nav-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="11" cy="18" r="2"/></svg>
                 </span>
-                <span>General</span>
+                <span data-i18n="settings.general.title"></span>
               </button>
               <button type="button" class="ui-button nav-item ui-nav-item" data-section="tv" aria-current="false">
                 <span class="nav-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="13" rx="2.5"/><path d="M8 21h8"/></svg>
                 </span>
-                <span>TV</span>
+                <span data-i18n="settings.tv.title"></span>
               </button>
               <button type="button" class="ui-button nav-item is-current ui-nav-item" data-section="user-agents" aria-current="page">
                 <span class="nav-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.8 8 10 4.6-1.2 8-5 8-10V7l-8-4Z"/><path d="m9.5 12 1.8 1.8 3.7-3.8"/></svg>
                 </span>
-                <span>User Agents</span>
+                <span data-i18n="presets.title"></span>
                 <span id="preset-count" class="nav-badge"></span>
               </button>
               <button type="button" class="ui-button nav-item ui-nav-item" data-section="extensions" aria-current="false">
                 <span class="nav-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v4h2a3 3 0 0 1 0 6H3v4a2 2 0 0 0 2 2h4v-2a3 3 0 0 1 6 0v2h4a2 2 0 0 0 2-2v-4h-2a3 3 0 0 1 0-6h2V5a2 2 0 0 0-2-2h-4v2a3 3 0 0 1-6 0V3Z"/></svg>
                 </span>
-                <span>Add-ons</span>
+                <span data-i18n="addons.title"></span>
               </button>
               <button type="button" class="ui-button nav-item ui-nav-item" data-section="about" aria-current="false">
                 <span class="nav-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/></svg>
                 </span>
-                <span>About</span>
+                <span data-i18n="settings.about.title"></span>
               </button>
             </nav>
           </div>
 
           <div class="sidebar-footer">
-            <div class="active-summary" aria-label="Active User-Agent">
+            <div class="active-summary" data-i18n-aria-label="settings.activeUserAgent">
               <div class="active-summary-top">
                 <span class="live-dot" aria-hidden="true"></span>
-                <span class="active-summary-label">Active preset</span>
-                <span id="loading-note" class="loading-pill">TV Mode</span>
+                <span class="active-summary-label" data-i18n="presets.activePreset"></span>
+                <span id="loading-note" class="loading-pill" data-i18n="common.tvMode"></span>
               </div>
               <strong id="active-name" class="active-summary-name">—</strong>
             </div>
@@ -158,12 +143,12 @@ export function mountSettings(root: HTMLElement) {
         <div class="settings-workspace">
           <header class="workspace-header">
             <div class="settings-heading">
-              <h1 id="settings-title">User Agents</h1>
-              <p id="section-subtitle" class="heading-subtitle">Choose how Tubevra identifies itself to YouTube TV.</p>
+              <h1 id="settings-title" data-i18n="presets.title"></h1>
+              <p id="section-subtitle" class="heading-subtitle" data-i18n="presets.subtitle"></p>
             </div>
             <button id="done" class="ui-button secondary done-button" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
-              <span>Back to TV</span>
+              <span data-i18n="settings.backToTv"></span>
             </button>
           </header>
 
@@ -184,7 +169,7 @@ export function mountSettings(root: HTMLElement) {
                 </span>
                 <div class="row-copy">
                   <strong>Tubevra</strong>
-                  <p>Version <span id="app-version">—</span></p>
+                  <p><span data-i18n="settings.about.version"></span> <span id="app-version">—</span></p>
                 </div>
               </div>
               <div class="widget-row">
@@ -195,17 +180,17 @@ export function mountSettings(root: HTMLElement) {
                   <strong>GitHub</strong>
                   <p>sthomsonpl/Tubevra</p>
                 </div>
-                <a id="project-github" class="secondary compact-btn project-link" href="${PROJECT_GITHUB_URL}" aria-label="Open Tubevra on GitHub in your browser">Open GitHub ↗</a>
+                <a id="project-github" class="secondary compact-btn project-link" href="${PROJECT_GITHUB_URL}" data-i18n-aria-label="settings.about.openGitHubLabel" data-i18n="settings.about.openGitHub"></a>
               </div>
               <div class="widget-row">
                 <span class="row-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4 8 9 8 9s8-5 8-9V6l-8-3Z"/><path d="m8 12 3 3 5-6"/></svg>
                 </span>
                 <div class="row-copy">
-                  <strong>Privacy Policy</strong>
-                  <p>Read how Tubevra handles your data.</p>
+                  <strong data-i18n="settings.about.privacyPolicy"></strong>
+                  <p data-i18n="settings.about.privacyDescription"></p>
                 </div>
-                <a id="privacy-policy" class="secondary compact-btn project-link" href="${PRIVACY_POLICY_URL}" aria-label="Open Tubevra Privacy Policy on GitHub in your browser">Open Privacy Policy ↗</a>
+                <a id="privacy-policy" class="secondary compact-btn project-link" href="${PRIVACY_POLICY_URL}" data-i18n-aria-label="settings.about.openPrivacyLabel" data-i18n="settings.about.openPrivacy"></a>
               </div>
             </div>
             <p id="about-feedback" class="feedback error" role="alert"></p>
@@ -214,11 +199,22 @@ export function mountSettings(root: HTMLElement) {
             <div class="widget-box">
               <div class="widget-row">
                 <span class="row-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z"/></svg>
+                </span>
+                <div class="row-copy"><label for="app-language" class="ui-label"><strong data-i18n="settings.general.language"></strong></label></div>
+                <select id="app-language" class="ui-select" aria-describedby="language-feedback" disabled>
+                  <option value="en" lang="en">English</option>
+                  <option value="pl" lang="pl">Polski</option>
+                </select>
+              </div>
+              <p id="language-feedback" class="feedback error" role="status"></p>
+              <div class="widget-row">
+                <span class="row-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 3v3m6-3v3M9 18v3m6-3v3M3 9h3m-3 6h3m12-6h3m-3 6h3"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
                 </span>
                 <div class="row-copy">
-                  <strong>Hardware acceleration</strong>
-                  <p id="hardware-acceleration-description">Enable hardware acceleration. Requires a restart.</p>
+                  <strong data-i18n="settings.general.hardwareAcceleration"></strong>
+                  <p id="hardware-acceleration-description" data-i18n="settings.general.hardwareDescription"></p>
                 </div>
                 <span id="hardware-acceleration-control"></span>
               </div>
@@ -226,9 +222,9 @@ export function mountSettings(root: HTMLElement) {
                 <span class="row-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
                 </span>
-                <div class="row-copy"><label for="playback-resolution" class="ui-label"><strong>Playback resolution</strong></label></div>
+                <div class="row-copy"><label for="playback-resolution" class="ui-label"><strong data-i18n="settings.general.playbackResolution"></strong></label></div>
                 <select id="playback-resolution" class="ui-select">
-                  <option value="auto">Auto</option>
+                  <option value="auto" data-i18n="common.auto"></option>
                   <option value="1440p">1440p</option>
                   <option value="4k">2160p (4K)</option>
                   <option value="8k">4320p (8K)</option>
@@ -240,10 +236,10 @@ export function mountSettings(root: HTMLElement) {
                   <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                 </span>
                 <div class="row-copy">
-                  <strong>Reload YouTube TV</strong>
-                  <p>Reload the main Leanback interface while keeping your session</p>
+                  <strong data-i18n="common.reloadTv"></strong>
+                  <p data-i18n="settings.general.reloadDescription"></p>
                 </div>
-                <button id="reload-home" class="ui-button secondary compact-btn reload-action ui-button--emphasized" type="button">Reload</button>
+                <button id="reload-home" class="ui-button secondary compact-btn reload-action ui-button--emphasized" type="button" data-i18n="settings.general.reload"></button>
               </div>
             </div>
             <p id="general-feedback" class="feedback" role="status" aria-live="polite"></p>
@@ -253,10 +249,10 @@ export function mountSettings(root: HTMLElement) {
                   <svg viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 9v5m0 3h.01"/></svg>
                 </span>
                 <div class="row-copy">
-                  <strong>Restart required</strong>
-                  <p role="status">Restart Tubevra to apply the hardware acceleration setting.</p>
+                  <strong data-i18n="settings.general.restartRequired"></strong>
+                  <p role="status" data-i18n="settings.general.restartDescription"></p>
                 </div>
-                <button id="restart-app" class="ui-button secondary compact-btn" type="button">Restart Tubevra</button>
+                <button id="restart-app" class="ui-button secondary compact-btn" type="button" data-i18n="settings.general.restartApp"></button>
               </div>
             </div>
           </div>
@@ -268,29 +264,29 @@ export function mountSettings(root: HTMLElement) {
                   <svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.8 8 10 4.6-1.2 8-5 8-10V7l-8-4Z"/><path d="m9.5 12 1.8 1.8 3.7-3.8"/></svg>
                 </span>
                 <div class="row-copy">
-                  <strong>User-Agent Identity</strong>
-                  <p id="tv-active-ua">Active: —</p>
+                  <strong data-i18n="settings.tv.userAgent"></strong>
+                  <p id="tv-active-ua">—</p>
                 </div>
-                <button id="go-user-agents" class="ui-button primary compact-btn" type="button">Configure</button>
+                <button id="go-user-agents" class="ui-button primary compact-btn" type="button" data-i18n="settings.tv.configure"></button>
               </div>
             </div>
           </div>
 
           <div id="panel-user-agents" class="section-panel ua-panel">
             <div class="settings-layout">
-              <aside class="widget-box presets-panel" aria-label="User-Agent presets">
+              <aside class="widget-box presets-panel" data-i18n-aria-label="presets.list">
                 <div class="presets-toolbar">
-                  <div class="segmented-switch ui-tabs" role="tablist" aria-label="Preset category">
+                  <div class="segmented-switch ui-tabs" role="tablist" data-i18n-aria-label="presets.category">
                     <button id="tab-default" type="button" class="ui-button seg-btn is-selected ui-tab" data-tab="default" role="tab" aria-selected="true">
-                      <span>Default</span>
+                      <span data-i18n="presets.default"></span>
                       <small id="default-count"></small>
                     </button>
                     <button id="tab-user" type="button" class="ui-button seg-btn ui-tab" data-tab="user" role="tab" aria-selected="false">
-                      <span>User</span>
+                      <span data-i18n="presets.user"></span>
                       <small id="user-count"></small>
                     </button>
                   </div>
-                  <button id="new-preset" class="ui-button new-preset-button ui-button--ghost" type="button" title="Add custom preset">+ Add</button>
+                  <button id="new-preset" class="ui-button new-preset-button ui-button--ghost" type="button" data-i18n-title="presets.addLabel" data-i18n="presets.add"></button>
                 </div>
 
                 <div id="preset-list" class="preset-list-container">
@@ -308,34 +304,34 @@ export function mountSettings(root: HTMLElement) {
                         <h2 id="detail-title">—</h2>
                         <span id="active-badge" class="status-chip chip-active" hidden>
                           <span class="live-dot" aria-hidden="true"></span>
-                          Active
+                          <span data-i18n="presets.active"></span>
                         </span>
                       </div>
                       <div class="inspector-sub-row">
-                        <span id="preset-kind" class="meta-label">Default preset</span>
-                        <span id="readonly-badge" class="readonly-pill" hidden>Read-only</span>
+                        <span id="preset-kind" class="meta-label" data-i18n="presets.defaultPreset"></span>
+                        <span id="readonly-badge" class="readonly-pill" hidden data-i18n="presets.readOnly"></span>
                       </div>
                     </div>
                   </div>
-                  <button id="apply-preset" class="ui-button primary apply-btn ui-button--apply" type="button">Apply preset</button>
+                  <button id="apply-preset" class="ui-button primary apply-btn ui-button--apply" type="button" data-i18n="presets.apply"></button>
                 </div>
 
                 <form id="preset-form">
                   <fieldset id="editor-fields">
                     <div class="form-row">
-                      <label for="preset-name" class="ui-label">Name</label>
+                      <label for="preset-name" class="ui-label" data-i18n="presets.name"></label>
                       <input id="preset-name" name="name" maxlength="100" required autocomplete="off" spellcheck="false" class="ui-input" />
                     </div>
                     <div class="form-row form-row-grow">
-                      <label for="preset-value" class="ui-label">User-Agent string</label>
+                      <label for="preset-value" class="ui-label" data-i18n="presets.userAgentString"></label>
                       <textarea id="preset-value" name="userAgent" rows="4" maxlength="4096" required autocomplete="off" spellcheck="false" class="ui-textarea"></textarea>
                     </div>
                     <div class="inspector-bottom">
                       <p id="editor-note" class="field-note"></p>
                       <div class="editor-actions">
-                        <button id="delete-preset" class="ui-button danger-text" type="button" hidden>Delete preset</button>
-                        <button id="discard" class="ui-button secondary" type="button" hidden>Discard changes</button>
-                        <button id="save-preset" class="ui-button primary" type="submit">Save changes</button>
+                        <button id="delete-preset" class="ui-button danger-text" type="button" hidden data-i18n="presets.delete"></button>
+                        <button id="discard" class="ui-button secondary" type="button" hidden data-i18n="presets.discard"></button>
+                        <button id="save-preset" class="ui-button primary" type="submit" data-i18n="presets.save"></button>
                       </div>
                     </div>
                   </fieldset>
@@ -343,16 +339,16 @@ export function mountSettings(root: HTMLElement) {
 
                 <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
 
-                <section id="delete-confirmation" class="delete-confirmation" aria-label="Confirm deletion" hidden>
+                <section id="delete-confirmation" class="delete-confirmation" data-i18n-aria-label="presets.confirmDeletion" hidden>
                   <div class="delete-header">
-                    <h3>Delete this preset?</h3>
+                    <h3 data-i18n="presets.deleteQuestion"></h3>
                     <p id="delete-note"></p>
                   </div>
-                  <label id="replacement-label" for="replacement" class="ui-label">Replacement preset</label>
-                  <select id="replacement" class="ui-select"><option value="">Choose a replacement…</option></select>
+                  <label id="replacement-label" for="replacement" class="ui-label" data-i18n="presets.replacement"></label>
+                  <select id="replacement" class="ui-select"><option value="" data-i18n="presets.chooseReplacement"></option></select>
                   <div class="actions">
-                    <button id="confirm-delete" class="ui-button danger" type="button">Delete preset</button>
-                    <button id="cancel-delete" class="ui-button secondary" type="button">Cancel</button>
+                    <button id="confirm-delete" class="ui-button danger" type="button" data-i18n="presets.delete"></button>
+                    <button id="cancel-delete" class="ui-button secondary" type="button" data-i18n="common.cancel"></button>
                   </div>
                 </section>
               </section>
@@ -364,9 +360,10 @@ export function mountSettings(root: HTMLElement) {
   </main>`;
   const element = <T extends HTMLElement = HTMLElement>(id: string) =>
     root.querySelector<T>(`#${id}`)!;
+  locale.apply(root);
   const name = element<HTMLInputElement>('preset-name');
   const hardwareAcceleration = createWidgetToggle(
-    'hardware acceleration',
+    t('settings.general.hardwareToggle'),
     true,
   );
   hardwareAcceleration.input.id = 'hardware-acceleration';
@@ -375,9 +372,10 @@ export function mountSettings(root: HTMLElement) {
     'hardware-acceleration-description',
   );
   element('hardware-acceleration-control').append(hardwareAcceleration.label);
-  const extensions = mountExtensions(element('panel-extensions'));
+  const extensions = mountExtensions(element('panel-extensions'), locale);
   const codecSettings = mountCodecSettings(
     element('codec-settings'),
+    locale,
     (preferences) => {
       void run(
         () => window.tubevra.setCodecPreferences(preferences),
@@ -390,7 +388,7 @@ export function mountSettings(root: HTMLElement) {
       void run(
         () => window.tubevra.reloadTV(),
         undefined,
-        'Applied.',
+        t('common.applied'),
         codecSettings.feedback,
       );
     },
@@ -399,6 +397,7 @@ export function mountSettings(root: HTMLElement) {
   const form = element<HTMLFormElement>('preset-form');
   const feedback = element('feedback');
   const replacement = element<HTMLSelectElement>('replacement');
+  const language = element<HTMLSelectElement>('app-language');
   let current: AppState | null = null;
   let selectedId: string | null = null;
   let creating = false;
@@ -411,9 +410,9 @@ export function mountSettings(root: HTMLElement) {
 
   function showSection(section: SectionId) {
     activeSection = section;
-    const meta = SECTION_META[section];
-    element('settings-title').textContent = meta.title;
-    element('section-subtitle').textContent = meta.subtitle;
+    const key = SECTION_KEYS[section];
+    element('settings-title').textContent = t(key + '.title');
+    element('section-subtitle').textContent = t(key + '.subtitle');
     element('panel-general').hidden = section !== 'general';
     element('panel-tv').hidden = section !== 'tv';
     element('panel-extensions').hidden = section !== 'extensions';
@@ -456,8 +455,8 @@ export function mountSettings(root: HTMLElement) {
     element<HTMLButtonElement>('apply-preset').disabled =
       busy || dirty || !preset || active;
     element('apply-preset').textContent = active
-      ? 'Active preset'
-      : 'Apply preset';
+      ? t('presets.activePreset')
+      : t('presets.apply');
     element<HTMLButtonElement>('save-preset').disabled =
       busy || (!creating && !dirty);
     element('save-preset').hidden = !!preset?.builtIn;
@@ -471,6 +470,8 @@ export function mountSettings(root: HTMLElement) {
     const resolution = element<HTMLSelectElement>('playback-resolution');
     resolution.disabled = busy || !current;
     resolution.value = current?.general.playbackResolution ?? 'auto';
+    language.disabled = busy || !current;
+    language.value = locale.language;
     hardwareAcceleration.input.disabled = busy || !current;
     hardwareAcceleration.input.checked =
       current?.general.hardwareAcceleration ?? true;
@@ -488,6 +489,8 @@ export function mountSettings(root: HTMLElement) {
     if (!current) return;
     const defaultContainer = element('default-preset-list');
     const userContainer = element('user-preset-list');
+    const focusedPreset = (document.activeElement as HTMLElement)?.dataset
+      .presetId;
     defaultContainer.replaceChildren();
     userContainer.replaceChildren();
 
@@ -522,17 +525,19 @@ export function mountSettings(root: HTMLElement) {
       const sub = document.createElement('span');
       sub.className = 'preset-option-sub';
       sub.textContent = preset.builtIn
-        ? (PRESET_HINTS[preset.id]?.sub ?? 'Default device')
-        : 'Custom User-Agent';
+        ? t('presets.device.' + preset.id, {
+            defaultValue: t('presets.defaultDevice'),
+          })
+        : t('presets.customUserAgent');
       copy.append(label, sub);
 
       const meta = document.createElement('small');
       meta.className = isActive ? 'preset-tag is-active' : 'preset-tag';
       meta.textContent = isActive
-        ? 'Active'
+        ? t('presets.active')
         : preset.builtIn
-          ? 'Default'
-          : 'User';
+          ? t('presets.default')
+          : t('presets.user');
 
       button.append(iconWrap, copy, meta);
       button.addEventListener('click', () => showPreset(preset.id));
@@ -546,15 +551,35 @@ export function mountSettings(root: HTMLElement) {
     if (customs.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty-user-list';
-      empty.textContent = creating
-        ? 'Creating new user preset…'
-        : 'No user presets yet. Click + Add above.';
+      empty.textContent = creating ? t('presets.creating') : t('presets.empty');
       userContainer.append(empty);
     } else {
       for (const preset of customs) {
         userContainer.append(makeOption(preset));
       }
     }
+    if (focusedPreset) {
+      element('preset-list')
+        .querySelector<HTMLElement>(
+          `[data-preset-id="${CSS.escape(focusedPreset)}"]`,
+        )
+        ?.focus({ preventScroll: true });
+    }
+  }
+  function renderPresetCopy() {
+    const preset = selected();
+    element('detail-title').textContent =
+      preset?.name ?? t('presets.newPreset');
+    element('preset-kind').textContent = creating
+      ? t('presets.newUserPreset')
+      : preset?.builtIn
+        ? t('presets.device.' + preset.id, {
+            defaultValue: t('presets.defaultPreset'),
+          })
+        : t('presets.userPreset');
+    element('editor-note').textContent = preset?.builtIn
+      ? t('presets.readOnlyNote')
+      : t('presets.reloadNote');
   }
   function showPreset(id: string | null) {
     selectedId = id;
@@ -569,19 +594,11 @@ export function mountSettings(root: HTMLElement) {
     name.value = preset?.name ?? '';
     value.value = preset?.userAgent ?? '';
     name.readOnly = value.readOnly = !!preset?.builtIn;
-    element('detail-title').textContent = preset?.name ?? 'New preset';
-    element('preset-kind').textContent = creating
-      ? 'User preset (new)'
-      : preset?.builtIn
-        ? (PRESET_HINTS[preset.id]?.sub ?? 'Default preset')
-        : 'User preset';
+    renderPresetCopy();
     const inspectorIcon = element('inspector-icon');
     inspectorIcon.replaceChildren(
       createDeviceIcon(preset?.id ?? 'custom', !!preset?.builtIn),
     );
-    element('editor-note').textContent = preset?.builtIn
-      ? 'Default preset is read-only.'
-      : 'Saving an active preset reloads YouTube TV.';
     element('delete-confirmation').hidden = true;
     message('');
     list();
@@ -591,6 +608,16 @@ export function mountSettings(root: HTMLElement) {
   function render(state: AppState) {
     const wasOpen = current?.settingsOpen;
     current = state;
+    if (locale.setLanguage(state.general.language)) {
+      locale.apply(root);
+      showSection(activeSection);
+      hardwareAcceleration.input.setAttribute(
+        'aria-label',
+        t('settings.general.hardwareToggle'),
+      );
+      renderPresetCopy();
+      renderDeleteNote();
+    }
     document.body.classList.toggle('glass-active', state.settingsOpen);
     element('general-restart').hidden = !state.general.restartRequired;
     element('app-version').textContent = state.version;
@@ -600,9 +627,9 @@ export function mountSettings(root: HTMLElement) {
     element('connection').hidden = !showConnection;
     element('settings-screen').hidden = showConnection;
     element('settings-screen').classList.toggle('is-open', state.settingsOpen);
-    element('connection-status').textContent =
-      state.error ??
-      (state.loading ? 'Connecting to YouTube TV…' : 'Ready to watch.');
+    element('connection-status').textContent = state.error
+      ? locale.error(state.error)
+      : t(state.loading ? 'connection.connecting' : 'connection.ready');
     element<HTMLButtonElement>('retry').disabled = state.loading || busy;
     const forceCodecs = state.general.codecPreferences.mode === 'force';
     const serviceMessage = element('service-error');
@@ -623,31 +650,33 @@ export function mountSettings(root: HTMLElement) {
       }
 
       if (isError) {
-        if (bannerTitle) bannerTitle.textContent = 'Application error';
+        if (bannerTitle)
+          bannerTitle.textContent = t('connection.applicationError');
         if (bannerDesc) bannerDesc.textContent = state.error;
       } else if (forceCodecs) {
-        if (bannerTitle)
-          bannerTitle.textContent = 'Forced codecs may cause playback issues';
+        if (bannerTitle) bannerTitle.textContent = t('codecs.forceWarning');
         if (bannerDesc)
-          bannerDesc.textContent =
-            'They may lack hardware acceleration. Playback may lag, stutter, use more CPU or fail.';
+          bannerDesc.textContent = t('codecs.forceWarningDescription');
       } else {
-        if (bannerTitle) bannerTitle.textContent = 'Codec compatibility warning';
+        if (bannerTitle)
+          bannerTitle.textContent = t('codecs.compatibilityWarning');
         if (bannerDesc)
           bannerDesc.textContent =
-            'Codec compatibility could not be fully verified. Playback may stutter or fail.' +
+            t('codecs.compatibilityDescription') +
             (state.codecWarning ? ` ${state.codecWarning}` : '');
       }
     }
     element('loading-note').textContent = state.loading
-      ? 'Reloading…'
-      : 'TV Mode';
+      ? t('connection.reloading')
+      : t('common.tvMode');
     const activeName =
       state.userAgents.presets.find(
         (preset) => preset.id === state.userAgents.activeId,
       )?.name ?? state.userAgents.activeId;
     element('active-name').textContent = activeName;
-    element('tv-active-ua').textContent = `Active: ${activeName}`;
+    element('tv-active-ua').textContent = t('settings.tv.activePreset', {
+      name: activeName,
+    });
     if (!selectedId && !creating) showPreset(state.userAgents.activeId);
     else {
       list();
@@ -672,22 +701,19 @@ export function mountSettings(root: HTMLElement) {
     };
     busy = true;
     controls();
-    report('Working…');
+    report(t('common.working'));
     try {
       const result = await action();
-      if (result.ok === false) report(result.error, true);
+      if (result.ok === false) report(locale.error(result.error), true);
       else {
         render(result.value);
         success?.(result.value);
         if (successMessage && result.value.error) {
-          report(
-            'Saved. YouTube TV could not reload. See the error above.',
-            true,
-          );
+          report(t('common.savedReloadFailed'), true);
         } else report(successMessage);
       }
     } catch {
-      report('Cannot communicate with Tubevra. Your form has been kept.', true);
+      report(t('common.formKept'), true);
     } finally {
       busy = false;
       controls();
@@ -696,7 +722,38 @@ export function mountSettings(root: HTMLElement) {
   const mutate = (
     command: UserAgentCommand,
     success?: (state: AppState) => void,
-  ) => run(() => window.tubevra.updateUserAgents(command), success, 'Saved.');
+  ) =>
+    run(
+      () => window.tubevra.updateUserAgents(command),
+      success,
+      t('common.saved'),
+    );
+  language.addEventListener('change', async () => {
+    const next = language.value;
+    if (busy || !current || !isLanguage(next) || next === locale.language)
+      return;
+    const focused = document.activeElement === language;
+    const output = element('language-feedback');
+    busy = true;
+    controls();
+    language.value = next;
+    output.textContent = '';
+    try {
+      const result = await window.tubevra.setLanguage(next);
+      if (result.ok) render(result.value);
+      else
+        output.textContent = t('settings.general.languageSaveErrorDetail', {
+          detail: result.error,
+        });
+    } catch {
+      output.textContent = t('settings.general.languageSaveError');
+    } finally {
+      busy = false;
+      controls();
+      if (focused && document.activeElement === document.body)
+        language.focus({ preventScroll: true });
+    }
+  });
   for (const button of root.querySelectorAll<HTMLButtonElement>(
     '.nav-item[data-section]',
   )) {
@@ -729,10 +786,10 @@ export function mountSettings(root: HTMLElement) {
     element('about-feedback').textContent = '';
     try {
       const result = await window.tubevra.openProjectGitHub();
-      if (!result.ok) element('about-feedback').textContent = result.error;
+      if (!result.ok)
+        element('about-feedback').textContent = locale.error(result.error);
     } catch {
-      element('about-feedback').textContent =
-        'Cannot communicate with Tubevra.';
+      element('about-feedback').textContent = t('common.communicationError');
     }
   });
   element('privacy-policy').addEventListener('click', async (event) => {
@@ -740,10 +797,10 @@ export function mountSettings(root: HTMLElement) {
     element('about-feedback').textContent = '';
     try {
       const result = await window.tubevra.openPrivacyPolicy();
-      if (!result.ok) element('about-feedback').textContent = result.error;
+      if (!result.ok)
+        element('about-feedback').textContent = locale.error(result.error);
     } catch {
-      element('about-feedback').textContent =
-        'Cannot communicate with Tubevra.';
+      element('about-feedback').textContent = t('common.communicationError');
     }
   });
   element('reload-home').addEventListener('click', () => {
@@ -787,7 +844,7 @@ export function mountSettings(root: HTMLElement) {
   });
   form.addEventListener('input', () => {
     dirty = true;
-    message('Save or discard changes before choosing another preset.');
+    message(t('presets.dirty'));
     controls();
   });
   form.addEventListener('submit', (event) => {
@@ -817,16 +874,22 @@ export function mountSettings(root: HTMLElement) {
   element('apply-preset').addEventListener('click', () => {
     if (selectedId) void mutate({ type: 'select', id: selectedId });
   });
+  function renderDeleteNote() {
+    element('delete-note').textContent =
+      selectedId === current?.userAgents.activeId
+        ? t('presets.deleteActive')
+        : t('presets.deleteCustom');
+  }
   element('delete-preset').addEventListener('click', () => {
     const active = selectedId === current?.userAgents.activeId;
-    replacement.replaceChildren(new Option('Choose a replacement…', ''));
+    const placeholder = new Option(t('presets.chooseReplacement'), '');
+    placeholder.dataset.i18n = 'presets.chooseReplacement';
+    replacement.replaceChildren(placeholder);
     for (const preset of current!.userAgents.presets)
       if (preset.id !== selectedId)
         replacement.add(new Option(preset.name, preset.id));
     replacement.hidden = element('replacement-label').hidden = !active;
-    element('delete-note').textContent = active
-      ? 'This preset is active. Choose its replacement explicitly before deleting.'
-      : 'This removes the custom preset from this device.';
+    renderDeleteNote();
     element('delete-confirmation').hidden = false;
     controls();
     (active
@@ -863,11 +926,12 @@ export function mountSettings(root: HTMLElement) {
   window.tubevra
     .getState()
     .then((result) => {
+      if (current) return;
       if (result.ok === true) render(result.value);
-      else element('connection-status').textContent = result.error;
+      else
+        element('connection-status').textContent = locale.error(result.error);
     })
     .catch(() => {
-      element('connection-status').textContent =
-        'Cannot communicate with Tubevra.';
+      element('connection-status').textContent = t('common.communicationError');
     });
 }

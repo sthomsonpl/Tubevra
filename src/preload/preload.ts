@@ -24,6 +24,7 @@ const extensionSettingsHost: ExtensionSettingsHostAPI = {
 contextBridge.exposeInMainWorld('extensionSettingsHost', extensionSettingsHost);
 
 const api: TubevraAPI = {
+  setLanguage: (language) => ipcRenderer.invoke(IPC.setLanguage, language),
   setCodecPreferences: (value) =>
     ipcRenderer.invoke(IPC.setCodecPreferences, value),
   toggleFullscreen: () => ipcRenderer.invoke(IPC.toggleFullscreen),
@@ -61,7 +62,9 @@ const api: TubevraAPI = {
     const handler = (_event: Electron.IpcRendererEvent, state: AppState) =>
       listener(state);
     ipcRenderer.on(IPC.stateChanged, handler);
-    return () => ipcRenderer.removeListener(IPC.stateChanged, handler);
+    return () => {
+      ipcRenderer.removeListener(IPC.stateChanged, handler);
+    };
   },
 };
 

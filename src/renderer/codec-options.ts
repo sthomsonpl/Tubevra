@@ -2,15 +2,15 @@ import { createSettingsDialog } from './settings-dialog';
 import { createWidgetCheckbox, createWidgetNotice } from './widgets';
 import type { CodecSettingsState } from '../shared/extension-settings';
 import type { SelectableVideoCodec } from '../shared/media-capabilities';
+import type { Localization } from './localization';
 
-export function mountCodecOptions(root: HTMLElement) {
+export function mountCodecOptions(root: HTMLElement, locale: Localization) {
+  const { t } = locale;
   document.body.className = 'settings-page glass-active extension-options-page';
   const content = document.createElement('div');
   content.className = 'settings-dialog-content';
   const box = document.createElement('div');
-  const description = createWidgetNotice(
-    'Choose which video codecs YouTube TV may use.',
-  );
+  const description = createWidgetNotice(t('codecs.description'));
   box.className = 'widget-box';
   const checkboxes = new Map<SelectableVideoCodec, HTMLInputElement>();
   for (const [codec, name] of [
@@ -24,9 +24,7 @@ export function mountCodecOptions(root: HTMLElement) {
   }
   const notes = document.createElement('div');
   notes.className = 'ui-notice-group';
-  notes.append(
-    createWidgetNotice('Disabling VP9 may prevent playback above 1080p.').notice,
-  );
+  notes.append(createWidgetNotice(t('codecs.vp9Warning')).notice);
   const feedback = document.createElement('p');
   feedback.id = 'codec-options-feedback';
   feedback.className = 'feedback';
@@ -35,13 +33,13 @@ export function mountCodecOptions(root: HTMLElement) {
   retry.id = 'codec-options-reload';
   retry.type = 'button';
   retry.className = 'ui-button secondary';
-  retry.textContent = 'Reload YouTube TV';
+  retry.textContent = t('common.reloadTv');
   retry.hidden = true;
   content.append(description.notice, box, notes, feedback, retry);
   let current: CodecSettingsState | null = null;
   let busy = false;
-  const settings = createSettingsDialog('Video codecs', content, {
-    subtitle: 'Playback settings',
+  const settings = createSettingsDialog(t('codecs.title'), content, locale, {
+    subtitle: t('codecs.playbackSettings'),
     onOpen() {},
     onCancel: () => {
       if (!busy) void close();
@@ -70,25 +68,25 @@ export function mountCodecOptions(root: HTMLElement) {
     current = state;
     for (const [codec, input] of checkboxes)
       input.checked = state.preferences.allowedCodecs.includes(codec);
-    description.body.textContent =
-      'Choose which video codecs YouTube TV may use.' +
-      (state.preferences.mode === 'auto'
-        ? ' In Auto, this selection is saved for Manual and Force.'
-        : state.preferences.mode === 'manual'
-          ? ' Selected codecs still pass compatibility checks.'
-          : '');
+    description.body.textContent = t(
+      {
+        auto: 'codecs.autoDescription',
+        manual: 'codecs.manualDescription',
+        force: 'codecs.description',
+      }[state.preferences.mode],
+    );
     controls();
   }
   async function close() {
     try {
       const result = await window.codecSettings.close();
-      if (!result.ok) feedback.textContent = result.error;
+      if (!result.ok) feedback.textContent = locale.error(result.error);
       else {
         observer.disconnect();
         dialog.close();
       }
     } catch {
-      feedback.textContent = 'Cannot communicate with Tubevra.';
+      feedback.textContent = t('common.communicationError');
     }
   }
   async function save() {
@@ -109,17 +107,18 @@ export function mountCodecOptions(root: HTMLElement) {
         busy = false;
         await close();
       } else {
-        feedback.textContent = result.error;
+        feedback.textContent = locale.error(result.error);
         // A failed reload may follow a committed save; keep that distinction visible.
         const latest = await window.codecSettings.get();
         if (latest.ok && latest.value.reloadRequired) {
           readState(latest.value);
-          feedback.textContent = `Saved. ${result.error}`;
+          feedback.textContent = t('common.savedWithError', {
+            detail: result.error,
+          });
         }
       }
     } catch {
-      feedback.textContent =
-        'Cannot communicate with Tubevra. Your changes have been kept.';
+      feedback.textContent = t('common.changesKept');
     } finally {
       busy = false;
       controls();
@@ -133,10 +132,10 @@ export function mountCodecOptions(root: HTMLElement) {
       const result = await window.codecSettings.reload();
       if (result.ok) {
         readState(result.value);
-        feedback.textContent = 'Applied.';
-      } else feedback.textContent = result.error;
+        feedback.textContent = t('common.applied');
+      } else feedback.textContent = locale.error(result.error);
     } catch {
-      feedback.textContent = 'Cannot communicate with Tubevra.';
+      feedback.textContent = t('common.communicationError');
     } finally {
       busy = false;
       controls();
@@ -155,10 +154,10 @@ export function mountCodecOptions(root: HTMLElement) {
     void window.codecSettings
       .resize(height)
       .then((r) => {
-        if (!r.ok) feedback.textContent = r.error;
+        if (!r.ok) feedback.textContent = locale.error(r.error);
       })
       .catch(() => {
-        feedback.textContent = 'Cannot resize codec settings.';
+        feedback.textContent = t('codecs.resizeError');
       });
   }
   const observer = new ResizeObserver(resize);
@@ -173,11 +172,11 @@ export function mountCodecOptions(root: HTMLElement) {
     .get()
     .then((result) => {
       if (result.ok) readState(result.value);
-      else feedback.textContent = result.error;
+      else feedback.textContent = locale.error(result.error);
       resize();
     })
     .catch(() => {
-      feedback.textContent = 'Cannot communicate with Tubevra.';
+      feedback.textContent = t('common.communicationError');
       resize();
     });
 }

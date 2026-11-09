@@ -50,6 +50,10 @@ WebContents, main frame and exact URL. Closing the window closes this view too.
 
 ## Settings behaviour
 
+Choose **English** or **Polski** under **Settings → General → Language**.
+Tubevra applies the change immediately without reloading YouTube TV and
+remembers your choice after restart. Both languages work offline.
+
 General settings place Video codecs below playback resolution. Auto/Manual/Force
 saves immediately; Settings opens AV1/VP9 checkboxes in the shared native options
 view. H.264 is always allowed by the policy. The dialog explains the selection

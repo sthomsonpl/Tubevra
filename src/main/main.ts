@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, Menu } from 'electron';
 import { UserAgentStore } from './user-agent-store';
 import { createTVWindow } from './tv-window';
 import { GeneralSettingsStore } from './general-settings-store';
+import { createI18n } from '../shared/i18n/i18n';
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.sthomsonpl.tubevra');
@@ -31,8 +32,9 @@ if (!app.requestSingleInstanceLock()) {
       if (configurationError) throw configurationError;
       store = await UserAgentStore.open(app.getPath('userData'));
     } catch (cause) {
+      const i18n = await createI18n(general?.snapshot().language);
       dialog.showErrorBox(
-        'Tubevra configuration error',
+        i18n.t('startup.configurationError'),
         cause instanceof Error ? cause.message : String(cause),
       );
       app.quit();
@@ -42,8 +44,9 @@ if (!app.requestSingleInstanceLock()) {
       try {
         await createTVWindow(store, general);
       } catch (cause) {
+        const i18n = await createI18n(general.snapshot().language);
         dialog.showErrorBox(
-          'Tubevra could not start',
+          i18n.t('startup.couldNotStart'),
           cause instanceof Error ? cause.message : String(cause),
         );
         app.quit();

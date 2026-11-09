@@ -1,13 +1,17 @@
 import type { AppState } from '../shared/api';
 import type { CodecPreferences } from '../shared/media-capabilities';
 import { createWidgetRow } from './widgets';
+import type { Localization } from './localization';
 
 export function mountCodecSettings(
   root: HTMLElement,
+  locale: Localization,
   onApply: (preferences: CodecPreferences) => void,
   onReload: () => void,
 ) {
-  const row = createWidgetRow('Video codecs');
+  const { t } = locale;
+  const row = createWidgetRow('');
+  row.copy.querySelector('strong')!.dataset.i18n = 'codecs.title';
   const icon = document.createElement('span');
   icon.className = 'row-icon';
   icon.setAttribute('aria-hidden', 'true');
@@ -17,24 +21,24 @@ export function mountCodecSettings(
   const mode = document.createElement('select');
   mode.id = 'codec-mode';
   mode.className = 'ui-select';
-  mode.setAttribute('aria-label', 'Video codec mode');
-  for (const [value, name] of [
-    ['auto', 'Auto'],
-    ['manual', 'Manual'],
-    ['force', 'Force'],
+  mode.setAttribute('data-i18n-aria-label', 'codecs.mode');
+  for (const [value, key] of [
+    ['auto', 'common.auto'],
+    ['manual', 'codecs.manual'],
+    ['force', 'codecs.force'],
   ]) {
     const option = document.createElement('option');
     option.value = value;
-    option.textContent = name;
+    option.dataset.i18n = key;
     mode.append(option);
   }
   const button = document.createElement('button');
   button.id = 'codec-settings-open';
   button.type = 'button';
   button.className = 'ui-button secondary compact-btn';
-  button.textContent = 'Settings';
+  button.dataset.i18n = 'common.settings';
   button.setAttribute('aria-haspopup', 'dialog');
-  button.setAttribute('aria-label', 'Configure video codecs');
+  button.setAttribute('data-i18n-aria-label', 'codecs.configure');
   row.row.append(button, mode);
   const feedback = document.createElement('p');
   feedback.id = 'codec-feedback';
@@ -44,17 +48,18 @@ export function mountCodecSettings(
   reload.id = 'codec-reload';
   reload.type = 'button';
   reload.className = 'ui-button secondary compact-btn';
-  reload.textContent = 'Reload YouTube TV';
+  reload.dataset.i18n = 'common.reloadTv';
   reload.hidden = true;
   reload.addEventListener('click', onReload);
   const blocker = document.createElement('dialog');
   blocker.id = 'codec-settings-blocker';
   blocker.className = 'extension-settings-blocker';
-  blocker.setAttribute('aria-label', 'Video codec settings');
+  blocker.setAttribute('data-i18n-aria-label', 'codecs.settings');
   // The widget itself belongs to the same card as playback resolution.
   root.replaceWith(row.row);
   row.copy.append(feedback, reload);
   row.row.append(blocker);
+  locale.apply(row.row);
   let current: AppState | null = null;
   mode.addEventListener('change', () => {
     if (current && ['auto', 'manual', 'force'].includes(mode.value))
@@ -70,7 +75,7 @@ export function mountCodecSettings(
   window.extensionSettingsHost.onClosed((error) => {
     if (!blocker.open) return;
     blocker.close();
-    if (error) report(error);
+    if (error) report(locale.error(error));
     button.focus({ preventScroll: true });
   });
   blocker.addEventListener('cancel', (event) => {
@@ -78,9 +83,9 @@ export function mountCodecSettings(
     void window.extensionSettingsHost
       .close()
       .then((result) => {
-        if (!result.ok) report(result.error);
+        if (!result.ok) report(locale.error(result.error));
       })
-      .catch(() => report('Cannot communicate with Tubevra.'));
+      .catch(() => report(t('common.communicationError')));
   });
   button.addEventListener('click', async () => {
     blocker.showModal();
@@ -88,11 +93,11 @@ export function mountCodecSettings(
       const result = await window.extensionSettingsHost.open('codecs');
       if (!result.ok) {
         blocker.close();
-        report(result.error);
+        report(locale.error(result.error));
       }
     } catch {
       blocker.close();
-      report('Cannot communicate with Tubevra.');
+      report(t('common.communicationError'));
     }
   });
   return {

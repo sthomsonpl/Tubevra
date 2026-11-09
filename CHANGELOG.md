@@ -2,6 +2,7 @@
 
 ### Added
 -Added video codec selection with Auto, Manual and Force modes.
+-Added interface language support with Polish and English available in Settings → General → Language.
 
 ### Changed
 -Redesigned settings with a glass appearance.

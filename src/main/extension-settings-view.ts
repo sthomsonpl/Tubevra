@@ -3,6 +3,7 @@ import type { BrowserWindow, WebContents, IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { EXTENSION_SETTINGS_IPC as IPC } from '../shared/extension-settings';
 import type { Result } from '../shared/api';
+import type { Language } from '../shared/i18n/language';
 import type { CodecSettingsState } from '../shared/extension-settings';
 import {
   isCodecPreferences,
@@ -15,6 +16,7 @@ export function createExtensionSettingsView(
   hostURL: string,
   options: {
     canOpen(): boolean;
+    getLanguage(): Language;
     getPreference(): boolean;
     savePreference(value: boolean): Promise<unknown>;
     getCodecs(): CodecSettingsState;
@@ -173,6 +175,11 @@ export function createExtensionSettingsView(
       return null;
     });
   });
+  ipcMain.handle(IPC.getLanguage, (event, ...args) => {
+    assertOptions(event);
+    if (args.length) throw Error('Unexpected arguments.');
+    return options.getLanguage();
+  });
   ipcMain.handle(IPC.get, (event, ...args) => {
     assertOptions(event, 'ryd');
     return result(() => {
@@ -291,6 +298,7 @@ export function createExtensionSettingsView(
       for (const channel of [
         IPC.open,
         IPC.get,
+        IPC.getLanguage,
         IPC.save,
         IPC.close,
         IPC.resize,

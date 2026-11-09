@@ -1,9 +1,11 @@
 import type { RatingsSnapshot } from '../shared/ratings';
+import type { Localization } from './localization';
 
-export function mountRatings(root: HTMLElement) {
+export function mountRatings(root: HTMLElement, locale: Localization) {
+  const { t } = locale;
   document.body.className = 'ratings-page';
   root.innerHTML =
-    '<section class="ratings" aria-label="Return YouTube Dislike estimates"><canvas aria-hidden="true"></canvas><div class="ratings-counts" role="status"></div><small>RYD · Estimated ratings</small></section>';
+    '<section class="ratings" data-i18n-aria-label="ratings.label"><canvas aria-hidden="true"></canvas><div class="ratings-counts" role="status"></div><small data-i18n="ratings.caption"></small></section>';
   const counts = root.querySelector<HTMLElement>('.ratings-counts')!;
   const canvas = root.querySelector('canvas')!;
   // The live panel and its animation use the same pixels, prepared even while
@@ -46,47 +48,83 @@ export function mountRatings(root: HTMLElement) {
     );
     ctx.font = `10px ${family}`;
     ctx.fillStyle = token('--overlay-muted');
-    ctx.fillText('RYD · Estimated ratings', width / 2, height / 2 + 12);
-    canvas.dataset.version = String(version);
+    ctx.fillText(t('ratings.caption'), width / 2, height / 2 + 12);
+    canvas.dataset.version = String(current?.version ?? -1);
   }
-  const compact = new Intl.NumberFormat(navigator.language, {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  });
-  const full = new Intl.NumberFormat(navigator.language);
-  let version = -1;
-  const render = (state: RatingsSnapshot) => {
-    if (state.version <= version) return;
-    version = state.version;
-    if (state.kind === 'ready') {
+  let current: RatingsSnapshot | undefined;
+  let snapshotFailed = false;
+  function render() {
+    locale.apply(root);
+    const state = current;
+    if (state?.kind === 'ready') {
+      const compact = new Intl.NumberFormat(locale.language, {
+        notation: 'compact',
+        maximumFractionDigits: 1,
+      });
+      const full = new Intl.NumberFormat(locale.language);
       counts.textContent = `👍 ${compact.format(state.likes)}  👎 ${compact.format(state.dislikes)}`;
       counts.setAttribute(
         'aria-label',
-        `${full.format(state.likes)} likes; ${full.format(state.dislikes)} dislikes. Estimates from Return YouTube Dislike.`,
+        t('ratings.announcement', {
+          likes: t('ratings.likes', {
+            count: state.likes,
+            formattedCount: full.format(state.likes),
+          }),
+          dislikes: t('ratings.dislikes', {
+            count: state.dislikes,
+            formattedCount: full.format(state.dislikes),
+          }),
+        }),
       );
     } else {
       counts.removeAttribute('aria-label');
-      counts.textContent = {
-        'no-video': 'Waiting for a video',
-        'unsupported-player': 'Unsupported player',
-        loading: 'Loading ratings…',
-        empty: 'No ratings available',
-        error: 'Ratings unavailable',
-        'rate-limited': 'Request limit reached',
-      }[state.kind];
+      counts.textContent = state
+        ? t(
+            {
+              'no-video': 'ratings.noVideo',
+              'unsupported-player': 'ratings.unsupportedPlayer',
+              loading: 'ratings.loading',
+              empty: 'ratings.empty',
+              error: 'ratings.error',
+              'rate-limited': 'ratings.rateLimited',
+            }[state.kind],
+          )
+        : snapshotFailed
+          ? t('ratings.error')
+          : '';
     }
     draw();
-  };
+  }
+  function receive(state: RatingsSnapshot) {
+    if (current && state.version <= current.version) return;
+    current = state;
+    render();
+  }
+  render();
   window.addEventListener('resize', draw);
-  const release = window.ratings.subscribe(render);
+  const release = window.ratings.subscribe(receive);
   window.addEventListener('unload', release, { once: true });
+  let receivedLanguage = false;
+  const releaseLanguage = window.ratings.onLanguageChanged((language) => {
+    receivedLanguage = true;
+    if (locale.setLanguage(language)) render();
+  });
+  window.addEventListener('unload', releaseLanguage, { once: true });
+  void window.ratings
+    .getLanguage()
+    .then((language) => {
+      if (!receivedLanguage && locale.setLanguage(language)) render();
+    })
+    .catch((error) =>
+      console.error('Cannot refresh the ratings language:', error),
+    );
   void window.ratings
     .getSnapshot()
-    .then(render)
+    .then(receive)
     .catch(() => {
-      if (version < 0) {
-        counts.textContent = 'Ratings unavailable';
-        draw();
+      if (!current) {
+        snapshotFailed = true;
+        render();
       }
     });
 }

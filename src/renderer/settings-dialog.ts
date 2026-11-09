@@ -1,8 +1,11 @@
+import type { Localization } from './localization';
+
 let dialogId = 0;
 
 export function createSettingsDialog(
   title: string,
   content: HTMLElement,
+  { t }: Localization,
   actions: {
     onOpen: () => void;
     onSave: () => void;
@@ -25,21 +28,21 @@ export function createSettingsDialog(
   dialog.setAttribute('aria-labelledby', heading.id);
   const subtitle = document.createElement('p');
   subtitle.className = 'heading-subtitle';
-  subtitle.textContent = actions.subtitle ?? 'Add-on settings';
+  subtitle.textContent = actions.subtitle ?? t('common.addOnSettings');
   header.append(heading, subtitle);
   const footer = document.createElement('div');
   footer.className = 'settings-dialog-actions';
   const cancel = document.createElement('button');
   cancel.type = 'button';
   cancel.className = 'ui-button secondary ui-button--dialog ui-button--cancel';
-  cancel.textContent = 'Cancel';
+  cancel.textContent = t('common.cancel');
   cancel.addEventListener('click', () =>
     actions.onCancel ? actions.onCancel() : dialog.close(),
   );
   const save = document.createElement('button');
   save.type = 'submit';
   save.className = 'ui-button primary ui-button--dialog';
-  save.textContent = actions.saveLabel ?? 'Save settings';
+  save.textContent = actions.saveLabel ?? t('common.saveSettings');
   form.addEventListener('submit', () => actions.onSave());
   footer.append(cancel, save);
   form.append(header, content, footer);
@@ -47,8 +50,8 @@ export function createSettingsDialog(
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'ui-button secondary compact-btn';
-  button.textContent = 'Settings';
-  button.setAttribute('aria-label', `Settings for ${title}`);
+  button.textContent = t('common.settings');
+  button.setAttribute('aria-label', t('common.settingsFor', { name: title }));
   button.setAttribute('aria-haspopup', 'dialog');
   button.addEventListener('click', () => {
     actions.onOpen();

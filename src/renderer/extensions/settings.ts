@@ -7,8 +7,10 @@ import {
   type SponsorAvailability,
 } from '../../extensions/sponsorblock/diagnostics';
 import type { SponsorPlayback } from '../../extensions/sponsorblock/player';
+import type { Localization } from '../localization';
 
-export function mountExtensions(root: HTMLElement) {
+export function mountExtensions(root: HTMLElement, locale: Localization) {
+  const { t } = locale;
   const feedback = document.createElement('p');
   feedback.className = 'feedback';
   feedback.setAttribute('role', 'status');
@@ -17,28 +19,34 @@ export function mountExtensions(root: HTMLElement) {
   list.hidden = true;
   const empty = document.createElement('p');
   empty.className = 'extensions-empty';
-  empty.textContent = 'No add-ons are available yet.';
   empty.hidden = true;
   const reload = document.createElement('button');
   reload.type = 'button';
   reload.className = 'ui-button secondary reload-action ui-button--emphasized';
-  reload.textContent = 'Reload YouTube TV';
   reload.hidden = true;
   root.append(feedback, empty, list, reload);
   let current: ExtensionsState | null = null;
   let busy = false;
-  let operationError = '';
+  let operationError: string | null = '';
   const rydButton = document.createElement('button');
   rydButton.type = 'button';
   rydButton.className = 'ui-button secondary compact-btn';
-  rydButton.textContent = 'Settings';
   rydButton.dataset.controlId = 'ryd-settings';
-  rydButton.setAttribute('aria-label', 'Settings for Return YouTube Dislike');
   rydButton.setAttribute('aria-haspopup', 'dialog');
   const blocker = document.createElement('dialog');
   blocker.className = 'extension-settings-blocker';
-  blocker.setAttribute('aria-label', 'Return YouTube Dislike settings');
   root.append(blocker);
+  function translateControls() {
+    empty.textContent = t('addons.empty');
+    reload.textContent = t('common.reloadTv');
+    rydButton.textContent = t('common.settings');
+    rydButton.setAttribute(
+      'aria-label',
+      t('common.settingsFor', { name: 'Return YouTube Dislike' }),
+    );
+    blocker.setAttribute('aria-label', t('addons.ryd.settings'));
+  }
+  translateControls();
   window.extensionSettingsHost.onClosed((error) => {
     if (!blocker.open) return;
     blocker.close();
@@ -59,7 +67,7 @@ export function mountExtensions(root: HTMLElement) {
         }
       })
       .catch(() => {
-        operationError = 'Cannot communicate with Tubevra.';
+        operationError = null;
         if (current) render(current);
       });
   });
@@ -74,42 +82,42 @@ export function mountExtensions(root: HTMLElement) {
       }
     } catch {
       blocker.close();
-      operationError = 'Cannot communicate with Tubevra.';
+      operationError = null;
       render(current!);
     }
   });
   const labels = {
-    disabled: 'Disabled',
-    starting: 'Starting…',
-    active: 'Active',
-    error: 'Error',
+    disabled: 'addons.status.disabled',
+    starting: 'addons.status.starting',
+    active: 'addons.status.active',
+    error: 'addons.status.error',
   };
   const serviceLabels: Record<SponsorAvailability, string> = {
     unknown: '',
-    available: 'Active',
-    'network-error': 'Network error',
-    'service-error': 'SponsorBlock unavailable',
-    timeout: 'Request timed out',
-    'invalid-data': 'Invalid segment data',
-    'rate-limited': 'Request limit reached. Try later.',
-    busy: 'Temporarily busy. Try later.',
+    available: 'addons.status.active',
+    'network-error': 'addons.sponsor.networkError',
+    'service-error': 'addons.sponsor.serviceError',
+    timeout: 'addons.sponsor.timeout',
+    'invalid-data': 'addons.sponsor.invalidData',
+    'rate-limited': 'addons.sponsor.rateLimited',
+    busy: 'addons.sponsor.busy',
   };
   const playbackLabels: Record<SponsorPlayback, string> = {
-    retrying: 'Retrying segment download…',
-    'request-error': 'Could not load segments. Reload YouTube TV to try again.',
-    waiting: 'Loading segments…',
-    ready: 'Ready',
-    empty: 'No sponsor segments',
-    'player-api': 'Skipping paused: unsupported player',
+    retrying: 'addons.sponsor.retrying',
+    'request-error': 'addons.sponsor.requestError',
+    waiting: 'addons.sponsor.waiting',
+    ready: 'addons.sponsor.ready',
+    empty: 'addons.sponsor.empty',
+    'player-api': 'addons.sponsor.playerApi',
     identity: '',
     media: '',
-    live: 'Skipping paused: live or unknown stream',
-    preview: 'Skipping paused: preview or unknown mode',
-    ad: 'Skipping paused: ad or unknown ad state',
-    timeline: 'Skipping paused: incompatible timeline',
-    'not-ready': 'Waiting for playback…',
-    'invalid-segments': 'Segments do not match this video',
-    'seek-failed': 'Skipping paused: seek failed',
+    live: 'addons.sponsor.live',
+    preview: 'addons.sponsor.preview',
+    ad: 'addons.sponsor.ad',
+    timeline: 'addons.sponsor.timeline',
+    'not-ready': 'addons.sponsor.notReady',
+    'invalid-segments': 'addons.sponsor.invalidSegments',
+    'seek-failed': 'addons.sponsor.seekFailed',
   };
   function render(state: ExtensionsState) {
     if (
@@ -120,6 +128,7 @@ export function mountExtensions(root: HTMLElement) {
     )
       return;
     current = state;
+    translateControls();
     const active = document.activeElement;
     const focusedId =
       active instanceof HTMLElement && list.contains(active)
@@ -132,23 +141,33 @@ export function mountExtensions(root: HTMLElement) {
     empty.hidden = !!state.items.length;
     reload.hidden = !state.items.some((item) => item.reloadRequired);
     reload.disabled = busy;
-    feedback.textContent = [state.error, operationError]
+    feedback.textContent = [
+      state.error && locale.error(state.error),
+      operationError === null
+        ? t('common.communicationError')
+        : operationError && locale.error(operationError),
+    ]
       .filter(Boolean)
       .join(' ');
     for (const item of state.items) {
-      const { row, copy } = createWidgetRow(item.name, item.description);
+      const { row, copy } = createWidgetRow(
+        item.name,
+        t('addons.description.' + item.id, { defaultValue: item.description }),
+      );
       const status = document.createElement('p');
       status.setAttribute('role', 'status');
       status.textContent = [
         item.id === 'sponsorblock'
-          ? labels[item.status]
-          : `Runtime: ${labels[item.status]}`,
+          ? t(labels[item.status])
+          : t('addons.runtime', { status: t(labels[item.status]) }),
         item.enabled && item.status === 'disabled' && item.reloadRequired
-          ? 'Enabled in settings. Starts after reload.'
+          ? t('addons.enabledAfterReload')
           : null,
-        item.error,
+        item.error && locale.error(item.error),
         item.reloadRequired
-          ? `Reload required: ${item.reloadReason ?? 'New document required.'}`
+          ? t('addons.reloadRequired', {
+              reason: item.reloadReason ?? t('addons.newDocumentRequired'),
+            })
           : null,
       ]
         .filter(Boolean)
@@ -167,7 +186,7 @@ export function mountExtensions(root: HTMLElement) {
         // Only a failed/retrying current request needs its detailed service error.
         const failedRequest =
           !playback || playback === 'retrying' || playback === 'request-error';
-        status.textContent =
+        const key =
           failedRequest &&
           service &&
           service !== 'unknown' &&
@@ -176,6 +195,7 @@ export function mountExtensions(root: HTMLElement) {
             : playback
               ? playbackLabels[playback]
               : serviceLabels[service ?? 'unknown'];
+        status.textContent = key ? t(key) : '';
       }
       if (
         item.id === 'return-youtube-dislike' &&
@@ -183,13 +203,13 @@ export function mountExtensions(root: HTMLElement) {
         item.diagnostics?.main?.playback
       ) {
         const messages: Record<string, string> = {
-          'no-video': 'Waiting for a video',
-          'unsupported-player': 'Unsupported YouTube TV player',
-          loading: 'Loading ratings…',
-          ready: 'Ratings ready',
-          empty: 'No ratings available',
-          error: 'Could not load ratings',
-          'rate-limited': 'Request limit reached. Try later.',
+          'no-video': t('ratings.noVideo'),
+          'unsupported-player': t('addons.ryd.unsupportedPlayer'),
+          loading: t('ratings.loading'),
+          ready: t('addons.ryd.ready'),
+          empty: t('ratings.empty'),
+          error: t('addons.ryd.error'),
+          'rate-limited': t('addons.sponsor.rateLimited'),
         };
         status.textContent = [
           status.textContent,
@@ -202,9 +222,9 @@ export function mountExtensions(root: HTMLElement) {
         item.id === 'return-youtube-dislike' &&
         item.diagnostics?.page?.connection === 'error'
       )
-        status.textContent = 'RYD private connection failed';
+        status.textContent = t('addons.ryd.connectionError');
       const { label, input: toggle } = createWidgetToggle(
-        item.name,
+        t('common.enable', { name: item.name }),
         item.enabled,
       );
       toggle.dataset.extensionId = item.id;
@@ -224,7 +244,7 @@ export function mountExtensions(root: HTMLElement) {
           if (result.ok) render(result.value);
           else operationError = result.error;
         } catch {
-          operationError = 'Cannot communicate with Tubevra.';
+          operationError = null;
         } finally {
           busy = false;
           render(current!);
@@ -250,15 +270,18 @@ export function mountExtensions(root: HTMLElement) {
               : window.tubevra.openReturnYouTubeDislike());
             if (!result.ok) operationError = result.error;
           } catch {
-            operationError = 'Cannot communicate with Tubevra.';
+            operationError = null;
           }
           render(current!);
         });
-        attribution.append('(Using ', link, ')');
+        const marker = '\uFFFC';
+        const [before, after] = t('addons.attribution', { name: marker }).split(
+          marker,
+        );
+        attribution.append(before, link, after);
         if (!isSponsorBlock) {
           const privacy = document.createElement('p');
-          privacy.textContent =
-            'When enabled, sends the current video ID and your IP address to RYD. Ratings are estimates. Disable this add-on to stop requests.';
+          privacy.textContent = t('addons.ryd.privacy');
           copy.append(privacy);
         }
         copy.append(attribution);
@@ -281,7 +304,7 @@ export function mountExtensions(root: HTMLElement) {
       const result = await window.tubevra.reloadTV();
       if (!result.ok) operationError = result.error;
     } catch {
-      operationError = 'Cannot communicate with Tubevra.';
+      operationError = null;
     } finally {
       busy = false;
       render(current!);
@@ -292,10 +315,10 @@ export function mountExtensions(root: HTMLElement) {
     .getExtensions()
     .then((result) => {
       if (result.ok) render(result.value);
-      else feedback.textContent = result.error;
+      else feedback.textContent = locale.error(result.error);
     })
     .catch(() => {
-      feedback.textContent = 'Cannot communicate with Tubevra.';
+      feedback.textContent = t('common.communicationError');
     });
   return { render };
 }

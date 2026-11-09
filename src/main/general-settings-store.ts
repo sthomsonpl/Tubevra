@@ -4,6 +4,11 @@ import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { GeneralSettingsState } from '../shared/api';
 import {
+  DEFAULT_LANGUAGE,
+  isLanguage,
+  type Language,
+} from '../shared/i18n/language';
+import {
   DEFAULT_CODEC_PREFERENCES,
   freezeCodecPreferences,
   isCodecPreferences,
@@ -15,6 +20,7 @@ import {
   type PlaybackResolution,
 } from '../shared/tv-display';
 interface Settings {
+  language: Language;
   codecPreferences: CodecPreferences;
   playbackResolution: PlaybackResolution;
   version: 1;
@@ -36,6 +42,7 @@ export class GeneralSettingsStore {
   static open(userData: string) {
     const file = path.join(userData, 'general-settings.json');
     let settings: Settings = {
+      language: DEFAULT_LANGUAGE,
       codecPreferences: DEFAULT_CODEC_PREFERENCES,
       version: 1,
       hardwareAcceleration: true,
@@ -54,6 +61,7 @@ export class GeneralSettingsStore {
         value.version !== 1 ||
         !('hardwareAcceleration' in value) ||
         typeof value.hardwareAcceleration !== 'boolean' ||
+        ('language' in value && !isLanguage(value.language)) ||
         ('playbackResolution' in value &&
           !isPlaybackResolution(value.playbackResolution)) ||
         ('codecPreferences' in value &&
@@ -63,11 +71,14 @@ export class GeneralSettingsStore {
             key !== 'version' &&
             key !== 'hardwareAcceleration' &&
             key !== 'codecPreferences' &&
+            key !== 'language' &&
             key !== 'playbackResolution',
         )
       )
         throw new Error('Unsupported or invalid general configuration.');
       settings = {
+        language:
+          'language' in value ? (value.language as Language) : DEFAULT_LANGUAGE,
         codecPreferences:
           'codecPreferences' in value
             ? freezeCodecPreferences(value.codecPreferences)
@@ -91,12 +102,20 @@ export class GeneralSettingsStore {
 
   snapshot(): GeneralSettingsState {
     return {
+      language: this.settings.language,
       codecPreferences: this.settings.codecPreferences,
       playbackResolution: this.settings.playbackResolution,
       hardwareAcceleration: this.settings.hardwareAcceleration,
       restartRequired:
         this.settings.hardwareAcceleration !== this.startupHardwareAcceleration,
     };
+  }
+
+  setLanguage(language: unknown): Promise<GeneralSettingsState> {
+    return this.update(() => {
+      if (!isLanguage(language)) throw new Error('Invalid language.');
+      return { ...this.settings, language };
+    });
   }
 
   setHardwareAcceleration(enabled: unknown): Promise<GeneralSettingsState> {

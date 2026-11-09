@@ -15,13 +15,13 @@ export function createWidgetRow(title: string, description?: string) {
   return { row, copy };
 }
 
-export function createWidgetToggle(name: string, checked: boolean) {
+export function createWidgetToggle(ariaLabel: string, checked: boolean) {
   const label = document.createElement('label');
   label.className = 'widget-toggle';
   const input = document.createElement('input');
   input.type = 'checkbox';
   input.checked = checked;
-  input.setAttribute('aria-label', `Enable ${name}`);
+  input.setAttribute('aria-label', ariaLabel);
   const track = document.createElement('span');
   track.className = 'widget-toggle-track';
   track.setAttribute('aria-hidden', 'true');

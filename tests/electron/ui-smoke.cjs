@@ -180,6 +180,260 @@ app
       'tubevra:open-privacy-policy',
     );
     const trusted = { sender: shell, senderFrame: shell.mainFrame };
+    const ratings = await waitFor(
+      () =>
+        webContents
+          .getAllWebContents()
+          .find((entry) => entry.getURL().endsWith('#ratings')),
+      'ratings view',
+    );
+    const setLanguageChannel = 'tubevra:set-language';
+    const ratingsLanguageChannel = 'tubevra:ratings:get-language';
+    const optionsLanguageChannel = 'tubevra:options:get-language';
+    const setLanguage = ipcMain._invokeHandlers.get(setLanguageChannel);
+    const getRatingsLanguage = ipcMain._invokeHandlers.get(
+      ratingsLanguageChannel,
+    );
+    const getOptionsLanguage = ipcMain._invokeHandlers.get(
+      optionsLanguageChannel,
+    );
+    for (const event of [
+      { sender: tv, senderFrame: tv.mainFrame },
+      { sender: toolbar, senderFrame: toolbar.mainFrame },
+      { sender: shell, senderFrame: { url: shell.getURL() } },
+    ])
+      await assert.rejects(async () => setLanguage(event, 'pl'), /Untrusted/);
+    await assert.rejects(async () => getRatingsLanguage(trusted), /Untrusted/);
+    await assert.rejects(async () => getOptionsLanguage(trusted), /Untrusted/);
+    assert.equal((await setLanguage(trusted)).ok, false);
+    assert.equal((await setLanguage(trusted, 'pl', 'en')).ok, false);
+    assert.equal((await setLanguage(trusted, 'de')).ok, false);
+    assert.equal((await state()).general.language, 'en');
+    assert.equal(
+      await ratings.executeJavaScript('window.ratings.getLanguage()'),
+      'en',
+    );
+    assert.equal(
+      (await shell.executeJavaScript('window.tubevra.setSettingsOpen(true)'))
+        .ok,
+      true,
+    );
+    await shell.executeJavaScript(`
+      document.querySelector('#new-preset').click();
+      for (const [id, value] of [['preset-name', 'Draft <&>'], ['preset-value', 'Draft UA']]) {
+        const input = document.getElementById(id);
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      document.querySelector('[data-section="general"]').click();
+      window.initialLanguageControl = document.querySelector('#app-language');
+      void 0;
+    `);
+    const chooseLanguage = (language) =>
+      shell.executeJavaScript(`(() => {
+        const languageControl = document.getElementById('app-language');
+        languageControl.focus();
+        languageControl.value = ${JSON.stringify(language)};
+        languageControl.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+    await waitFor(
+      () =>
+        ratings.executeJavaScript(
+          "document.querySelector('canvas').dataset.version !== '-1'",
+        ),
+      'initial ratings canvas',
+    );
+    const ratingsCanvas = () =>
+      ratings.executeJavaScript("document.querySelector('canvas').toDataURL()");
+    const englishRatings = await ratingsCanvas();
+    for (const surface of [shell, toolbar])
+      await surface.executeJavaScript(`
+        window.languageChanges = [];
+        window.releaseLanguage = window.tubevra.onStateChanged((state) => window.languageChanges.push(state.general.language));
+        void 0;
+      `);
+    await ratings.executeJavaScript(`
+      window.languageChanges = [];
+      window.releaseLanguage = window.ratings.onLanguageChanged((language) => window.languageChanges.push(language));
+      void 0;
+    `);
+    const settingsFile = path.join(profile, 'general-settings.json');
+    const requestCount = requests.length;
+    fs.mkdirSync(settingsFile);
+    try {
+      await chooseLanguage('pl');
+      await waitFor(
+        () =>
+          shell.executeJavaScript(
+            "document.querySelector('#language-feedback').textContent.includes('Could not save') && !document.getElementById('app-language').disabled",
+          ),
+        'language save error',
+      );
+      assert.deepEqual(
+        await shell.executeJavaScript(
+          "[document.documentElement.lang, document.getElementById('app-language').value]",
+        ),
+        ['en', 'en'],
+      );
+      assert.equal((await state()).general.language, 'en');
+      for (const surface of [shell, toolbar, ratings])
+        assert.deepEqual(
+          await surface.executeJavaScript('window.languageChanges'),
+          [],
+        );
+    } finally {
+      fs.rmdirSync(settingsFile);
+    }
+    await chooseLanguage('pl');
+    await waitFor(
+      () =>
+        shell.executeJavaScript(
+          "document.documentElement.lang === 'pl' && !document.getElementById('app-language').disabled",
+        ),
+      'Polish settings',
+    );
+    assert.equal((await state()).general.language, 'pl');
+    assert.equal(
+      JSON.parse(fs.readFileSync(settingsFile, 'utf8')).language,
+      'pl',
+    );
+    for (const surface of [shell, toolbar, ratings]) {
+      await waitFor(
+        () =>
+          surface.executeJavaScript("window.languageChanges.includes('pl')"),
+        'saved language publication',
+      );
+      await surface.executeJavaScript('window.releaseLanguage()');
+    }
+    assert.equal(
+      await ratings.executeJavaScript('window.ratings.getLanguage()'),
+      'pl',
+    );
+    assert.deepEqual(
+      await shell.executeJavaScript(`[
+        document.getElementById('settings-title').textContent,
+        document.querySelector('label[for="app-language"]').textContent,
+        document.activeElement === window.initialLanguageControl,
+        document.getElementById('preset-name').value,
+        document.getElementById('preset-value').value,
+        document.getElementById('detail-title').textContent,
+      ]`),
+      ['Ogólne', 'Język', true, 'Draft <&>', 'Draft UA', 'Nowy profil'],
+    );
+    assert.deepEqual(
+      await toolbar.executeJavaScript(`[
+        document.documentElement.lang,
+        document.querySelector('#back').getAttribute('aria-label'),
+        document.querySelector('#fullscreen').title,
+      ]`),
+      ['pl', 'Wstecz', 'Włącz pełny ekran (F11)'],
+    );
+    assert.deepEqual(
+      await ratings.executeJavaScript(
+        "[document.documentElement.lang, document.querySelector('small').textContent]",
+      ),
+      ['pl', 'RYD · Szacunkowe oceny'],
+    );
+    assert.notEqual(await ratingsCanvas(), englishRatings);
+    assert.equal(requests.length, requestCount);
+    for (const [hash, bridge, kind, heading] of [
+      [
+        '#extension-settings',
+        'extensionSettings',
+        '',
+        'Return YouTube Dislike',
+      ],
+      ['#codec-settings', 'codecSettings', "'codecs'", 'Kodeki wideo'],
+    ]) {
+      assert.equal(
+        (
+          await shell.executeJavaScript(
+            `window.extensionSettingsHost.open(${kind})`,
+          )
+        ).ok,
+        true,
+      );
+      const options = webContents
+        .getAllWebContents()
+        .find((entry) => entry.getURL().endsWith(hash));
+      assert.ok(options);
+      assert.equal(
+        await options.executeJavaScript(`window.${bridge}.getLanguage()`),
+        'pl',
+      );
+      await waitFor(
+        () =>
+          options.executeJavaScript(
+            "Boolean(document.querySelector('dialog[open] .primary:enabled'))",
+          ),
+        'localized options',
+      );
+      assert.deepEqual(
+        await options.executeJavaScript(
+          "[document.documentElement.lang, document.querySelector('h2').textContent, document.querySelector('.ui-button--cancel').textContent]",
+        ),
+        ['pl', heading, 'Anuluj'],
+      );
+      await options.executeJavaScript(
+        "document.querySelector('.ui-button--cancel').click()",
+      );
+      await waitFor(
+        () =>
+          options.executeJavaScript("!document.querySelector('dialog').open"),
+        'options close',
+      );
+      await assert.rejects(
+        async () =>
+          getOptionsLanguage({
+            sender: options,
+            senderFrame: options.mainFrame,
+          }),
+        /Untrusted/,
+      );
+    }
+    assert.equal(
+      (await toolbar.executeJavaScript('window.tubevra.toggleFullscreen()')).ok,
+      true,
+    );
+    await waitFor(
+      () =>
+        toolbar.executeJavaScript(
+          "document.querySelector('#fullscreen').title === 'Wyłącz pełny ekran (F11)'",
+        ),
+      'Polish fullscreen control',
+    );
+    await chooseLanguage('en');
+    for (const surface of [shell, toolbar, ratings])
+      await waitFor(
+        () =>
+          surface.executeJavaScript("document.documentElement.lang === 'en'"),
+        'English after language switch',
+      );
+    assert.equal(await ratingsCanvas(), englishRatings);
+    assert.equal(requests.length, requestCount);
+    assert.equal((await state()).windowFullscreen, true);
+    assert.equal(
+      await toolbar.executeJavaScript(
+        "document.querySelector('#fullscreen').title",
+      ),
+      'Exit fullscreen (F11)',
+    );
+    assert.equal(
+      (await toolbar.executeJavaScript('window.tubevra.toggleFullscreen()')).ok,
+      true,
+    );
+    await shell.executeJavaScript(`
+      document.querySelector('[data-section="user-agents"]').click();
+      document.querySelector('#discard').click();
+    `);
+    assert.equal(
+      (await shell.executeJavaScript('window.tubevra.setSettingsOpen(false)'))
+        .ok,
+      true,
+    );
+    checks.push(
+      'language IPC authorization, atomic save, EN/PL switch, focus, draft, ratings canvas and localized options',
+    );
     const toggleFullscreen = ipcMain._invokeHandlers.get(
       'tubevra:toggle-fullscreen',
     );
@@ -1295,6 +1549,12 @@ app
       () => win.isDestroyed(),
       'native host close remains available',
     );
+    for (const channel of [
+      setLanguageChannel,
+      ratingsLanguageChannel,
+      optionsLanguageChannel,
+    ])
+      assert.equal(ipcMain._invokeHandlers.has(channel), false, channel);
     app.exit(0);
   })
   .catch((error) => {
