@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, Menu } from 'electron';
 import { UserAgentStore } from './user-agent-store';
 import { createTVWindow } from './tv-window';
 import { GeneralSettingsStore } from './general-settings-store';
+import { detectSystemLanguage } from './system-language';
 import { createI18n } from '../shared/i18n/i18n';
 
 if (process.platform === 'win32') {
@@ -13,8 +14,12 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   let general: GeneralSettingsStore;
   let configurationError: unknown;
+  const systemLanguage = detectSystemLanguage();
   try {
-    general = GeneralSettingsStore.open(app.getPath('userData'));
+    general = GeneralSettingsStore.open(
+      app.getPath('userData'),
+      systemLanguage,
+    );
     if (!general.snapshot().hardwareAcceleration)
       app.disableHardwareAcceleration();
   } catch (cause) {
@@ -32,7 +37,9 @@ if (!app.requestSingleInstanceLock()) {
       if (configurationError) throw configurationError;
       store = await UserAgentStore.open(app.getPath('userData'));
     } catch (cause) {
-      const i18n = await createI18n(general?.snapshot().language);
+      const i18n = await createI18n(
+        general?.snapshot().language ?? systemLanguage,
+      );
       dialog.showErrorBox(
         i18n.t('startup.configurationError'),
         cause instanceof Error ? cause.message : String(cause),

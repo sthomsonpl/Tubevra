@@ -3,7 +3,10 @@ import { PROJECT_GITHUB_URL, PRIVACY_POLICY_URL } from '../shared/api';
 import { mountExtensions } from './extensions/settings';
 import { createWidgetToggle } from './widgets';
 import { mountCodecSettings } from './codec-settings';
-import { isLanguage } from '../shared/i18n/language';
+import {
+  DEFAULT_LANGUAGE_PREFERENCE,
+  isLanguagePreference,
+} from '../shared/i18n/language';
 import type { Localization } from './localization';
 
 const tubevraIcon = new URL('../../assets/icon/icon.ico', import.meta.url).href;
@@ -203,6 +206,7 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
                 </span>
                 <div class="row-copy"><label for="app-language" class="ui-label"><strong data-i18n="settings.general.language"></strong></label></div>
                 <select id="app-language" class="ui-select" aria-describedby="language-feedback" disabled>
+                  <option value="auto" data-i18n="settings.general.languageAuto"></option>
                   <option value="en" lang="en">English</option>
                   <option value="pl" lang="pl">Polski</option>
                 </select>
@@ -471,7 +475,8 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
     resolution.disabled = busy || !current;
     resolution.value = current?.general.playbackResolution ?? 'auto';
     language.disabled = busy || !current;
-    language.value = locale.language;
+    language.value =
+      current?.general.languagePreference ?? DEFAULT_LANGUAGE_PREFERENCE;
     hardwareAcceleration.input.disabled = busy || !current;
     hardwareAcceleration.input.checked =
       current?.general.hardwareAcceleration ?? true;
@@ -730,7 +735,12 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
     );
   language.addEventListener('change', async () => {
     const next = language.value;
-    if (busy || !current || !isLanguage(next) || next === locale.language)
+    if (
+      busy ||
+      !current ||
+      !isLanguagePreference(next) ||
+      next === current.general.languagePreference
+    )
       return;
     const focused = document.activeElement === language;
     const output = element('language-feedback');

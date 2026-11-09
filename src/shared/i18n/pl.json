@@ -41,6 +41,7 @@
       "title": "Ogólne",
       "subtitle": "Preferencje aplikacji i szybkie akcje.",
       "language": "Język",
+      "languageAuto": "Auto",
       "languageSaveError": "Nie udało się zapisać wybranego języka.",
       "languageSaveErrorDetail": "Nie udało się zapisać wybranego języka. {{detail}}",
       "hardwareAcceleration": "Akceleracja sprzętowa",

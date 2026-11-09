@@ -5,8 +5,10 @@ import path from 'node:path';
 import type { GeneralSettingsState } from '../shared/api';
 import {
   DEFAULT_LANGUAGE,
-  isLanguage,
+  DEFAULT_LANGUAGE_PREFERENCE,
+  isLanguagePreference,
   type Language,
+  type LanguagePreference,
 } from '../shared/i18n/language';
 import {
   DEFAULT_CODEC_PREFERENCES,
@@ -20,7 +22,7 @@ import {
   type PlaybackResolution,
 } from '../shared/tv-display';
 interface Settings {
-  language: Language;
+  language: LanguagePreference;
   codecPreferences: CodecPreferences;
   playbackResolution: PlaybackResolution;
   version: 1;
@@ -34,15 +36,16 @@ export class GeneralSettingsStore {
   private constructor(
     private readonly file: string,
     private settings: Settings,
+    private readonly systemLanguage: Language,
   ) {
     this.startupHardwareAcceleration = settings.hardwareAcceleration;
   }
 
   // Electron needs this preference synchronously, before the ready event.
-  static open(userData: string) {
+  static open(userData: string, systemLanguage: Language = DEFAULT_LANGUAGE) {
     const file = path.join(userData, 'general-settings.json');
     let settings: Settings = {
-      language: DEFAULT_LANGUAGE,
+      language: DEFAULT_LANGUAGE_PREFERENCE,
       codecPreferences: DEFAULT_CODEC_PREFERENCES,
       version: 1,
       hardwareAcceleration: true,
@@ -61,7 +64,7 @@ export class GeneralSettingsStore {
         value.version !== 1 ||
         !('hardwareAcceleration' in value) ||
         typeof value.hardwareAcceleration !== 'boolean' ||
-        ('language' in value && !isLanguage(value.language)) ||
+        ('language' in value && !isLanguagePreference(value.language)) ||
         ('playbackResolution' in value &&
           !isPlaybackResolution(value.playbackResolution)) ||
         ('codecPreferences' in value &&
@@ -78,7 +81,9 @@ export class GeneralSettingsStore {
         throw new Error('Unsupported or invalid general configuration.');
       settings = {
         language:
-          'language' in value ? (value.language as Language) : DEFAULT_LANGUAGE,
+          'language' in value
+            ? (value.language as LanguagePreference)
+            : DEFAULT_LANGUAGE_PREFERENCE,
         codecPreferences:
           'codecPreferences' in value
             ? freezeCodecPreferences(value.codecPreferences)
@@ -97,12 +102,16 @@ export class GeneralSettingsStore {
           { cause: error },
         );
     }
-    return new GeneralSettingsStore(file, settings);
+    return new GeneralSettingsStore(file, settings, systemLanguage);
   }
 
   snapshot(): GeneralSettingsState {
     return {
-      language: this.settings.language,
+      language:
+        this.settings.language === 'auto'
+          ? this.systemLanguage
+          : this.settings.language,
+      languagePreference: this.settings.language,
       codecPreferences: this.settings.codecPreferences,
       playbackResolution: this.settings.playbackResolution,
       hardwareAcceleration: this.settings.hardwareAcceleration,
@@ -113,7 +122,7 @@ export class GeneralSettingsStore {
 
   setLanguage(language: unknown): Promise<GeneralSettingsState> {
     return this.update(() => {
-      if (!isLanguage(language)) throw new Error('Invalid language.');
+      if (!isLanguagePreference(language)) throw new Error('Invalid language.');
       return { ...this.settings, language };
     });
   }

@@ -2,7 +2,7 @@ import type { PlaybackResolution } from './tv-display';
 import type { CodecPreferences } from './media-capabilities';
 import type { ExtensionsState } from '../extensions/types';
 import type { ExtensionCommand } from '../extensions/types';
-import type { Language } from './i18n/language';
+import type { Language, LanguagePreference } from './i18n/language';
 
 export interface CustomUserAgent {
   id: string;
@@ -23,6 +23,7 @@ export type UserAgentCommand =
 
 export interface GeneralSettingsState {
   language: Language;
+  languagePreference: LanguagePreference;
   codecPreferences: CodecPreferences;
   playbackResolution: PlaybackResolution;
   hardwareAcceleration: boolean;
@@ -59,7 +60,7 @@ export interface ExtensionsAPI {
 }
 
 export interface TubevraAPI extends ExtensionsAPI {
-  setLanguage(language: Language): Promise<Result<AppState>>;
+  setLanguage(language: LanguagePreference): Promise<Result<AppState>>;
   setCodecPreferences(value: CodecPreferences): Promise<Result<AppState>>;
   toggleFullscreen(): Promise<Result<AppState>>;
   setPlaybackResolution(value: PlaybackResolution): Promise<Result<AppState>>;

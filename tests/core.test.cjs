@@ -25,6 +25,7 @@ const { UserAgentStore } = require('../src/main/user-agent-store.ts');
 const {
   GeneralSettingsStore,
 } = require('../src/main/general-settings-store.ts');
+const { detectSystemLanguage } = require('../src/main/system-language.ts');
 const { createI18n } = require('../src/shared/i18n/i18n.ts');
 const { SUPPORTED_LANGUAGES } = require('../src/shared/i18n/language.ts');
 const { USER_AGENT_PRESETS } = require('../src/config/user-agents.ts');
@@ -190,6 +191,7 @@ test('hardware acceleration defaults on, persists across restarts and clears a r
   const store = GeneralSettingsStore.open(directory);
   assert.deepEqual(store.snapshot(), {
     language: 'en',
+    languagePreference: 'auto',
     playbackResolution: 'auto',
     codecPreferences: { mode: 'auto', allowedCodecs: ['vp9', 'av1'] },
     hardwareAcceleration: true,
@@ -198,6 +200,7 @@ test('hardware acceleration defaults on, persists across restarts and clears a r
   await store.setHardwareAcceleration(false);
   assert.deepEqual(store.snapshot(), {
     language: 'en',
+    languagePreference: 'auto',
     playbackResolution: 'auto',
     codecPreferences: { mode: 'auto', allowedCodecs: ['vp9', 'av1'] },
     hardwareAcceleration: false,
@@ -206,6 +209,7 @@ test('hardware acceleration defaults on, persists across restarts and clears a r
   const reopened = GeneralSettingsStore.open(directory);
   assert.deepEqual(reopened.snapshot(), {
     language: 'en',
+    languagePreference: 'auto',
     playbackResolution: 'auto',
     codecPreferences: { mode: 'auto', allowedCodecs: ['vp9', 'av1'] },
     hardwareAcceleration: false,
@@ -217,6 +221,7 @@ test('hardware acceleration defaults on, persists across restarts and clears a r
   assert.equal(reopened.snapshot().restartRequired, true);
   assert.deepEqual(GeneralSettingsStore.open(directory).snapshot(), {
     language: 'en',
+    languagePreference: 'auto',
     playbackResolution: 'auto',
     codecPreferences: { mode: 'auto', allowedCodecs: ['vp9', 'av1'] },
     hardwareAcceleration: true,
@@ -273,6 +278,7 @@ test('a failed general settings write preserves the running preference and recov
   await assert.rejects(store.setHardwareAcceleration(false));
   assert.deepEqual(store.snapshot(), {
     language: 'en',
+    languagePreference: 'auto',
     playbackResolution: 'auto',
     codecPreferences: { mode: 'auto', allowedCodecs: ['vp9', 'av1'] },
     hardwareAcceleration: true,
@@ -290,13 +296,37 @@ test('a failed general settings write preserves the running preference and recov
   );
 });
 
+test('automatic language uses only the first preferred system language and falls back to English', (t) => {
+  for (const [preferred, expected] of [
+    [['pl'], 'pl'],
+    [['PL-pl', 'en-US'], 'pl'],
+    [['en-US', 'pl-PL'], 'en'],
+    [['de-DE', 'pl-PL'], 'en'],
+    [[], 'en'],
+  ])
+    assert.equal(
+      detectSystemLanguage(() => preferred),
+      expected,
+    );
+
+  const warn = t.mock.method(console, 'warn', () => {});
+  assert.equal(
+    detectSystemLanguage(() => {
+      throw new Error('System language unavailable.');
+    }),
+    'en',
+  );
+  assert.equal(warn.mock.callCount(), 1);
+});
+
 test('language defaults on legacy profiles without rewriting them and persists alongside other preferences', async (t) => {
   const { directory } = await fixture(t);
   const file = path.join(directory, 'general-settings.json');
   const legacy = JSON.stringify({ version: 1, hardwareAcceleration: false });
   await fs.writeFile(file, legacy);
-  const store = GeneralSettingsStore.open(directory);
-  assert.equal(store.snapshot().language, 'en');
+  const store = GeneralSettingsStore.open(directory, 'pl');
+  assert.equal(store.snapshot().language, 'pl');
+  assert.equal(store.snapshot().languagePreference, 'auto');
   assert.equal(await fs.readFile(file, 'utf8'), legacy);
   for (const value of ['de', 'PL', 'pl-PL', undefined, null, {}])
     await assert.rejects(store.setLanguage(value), /Invalid language/);
@@ -308,12 +338,29 @@ test('language defaults on legacy profiles without rewriting them and persists a
   ]);
   assert.deepEqual(GeneralSettingsStore.open(directory).snapshot(), {
     language: 'pl',
+    languagePreference: 'pl',
     playbackResolution: '4k',
     codecPreferences: { mode: 'manual', allowedCodecs: ['av1'] },
     hardwareAcceleration: false,
     restartRequired: false,
   });
   assert.equal(JSON.parse(await fs.readFile(file, 'utf8')).version, 1);
+});
+
+test('explicit language overrides the system and a saved Auto resolves again on restart', async (t) => {
+  const { directory } = await fixture(t);
+  const store = GeneralSettingsStore.open(directory, 'pl');
+  assert.equal(store.snapshot().language, 'pl');
+  assert.equal(store.snapshot().languagePreference, 'auto');
+  assert.equal((await store.setLanguage('en')).language, 'en');
+  assert.equal(
+    GeneralSettingsStore.open(directory, 'pl').snapshot().language,
+    'en',
+  );
+  assert.equal((await store.setLanguage('auto')).language, 'pl');
+  const reopened = GeneralSettingsStore.open(directory, 'en').snapshot();
+  assert.equal(reopened.languagePreference, 'auto');
+  assert.equal(reopened.language, 'en');
 });
 
 test('a failed language write preserves the active language and can be retried', async (t) => {
@@ -323,6 +370,7 @@ test('a failed language write preserves the active language and can be retried',
   await fs.mkdir(file);
   await assert.rejects(store.setLanguage('pl'));
   assert.equal(store.snapshot().language, 'en');
+  assert.equal(store.snapshot().languagePreference, 'auto');
   await fs.rmdir(file);
   await store.setLanguage('pl');
   assert.equal(GeneralSettingsStore.open(directory).snapshot().language, 'pl');
@@ -366,6 +414,7 @@ test('translation catalogs contain matching messages and all locale-specific plu
     }
   }
   assert.equal(i18n.t('settings.general.language'), 'Język');
+  assert.equal(i18n.t('settings.general.languageAuto'), 'Auto');
   for (const [count, expected] of [
     [1, '1 polubienie'],
     [2, '2 polubienia'],
@@ -377,6 +426,7 @@ test('translation catalogs contain matching messages and all locale-specific plu
     );
   await i18n.changeLanguage('en');
   assert.equal(i18n.t('settings.general.language'), 'Language');
+  assert.equal(i18n.t('settings.general.languageAuto'), 'Auto (system)');
 });
 
 test('playback resolution migrates old settings and serializes independent preferences', async (t) => {

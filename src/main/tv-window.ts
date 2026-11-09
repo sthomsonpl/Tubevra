@@ -24,6 +24,7 @@ import {
 import type { AppState, Result } from '../shared/api';
 import type { UserAgentStore } from './user-agent-store';
 import { GeneralSettingsStore } from './general-settings-store';
+import { detectSystemLanguage } from './system-language';
 import { resolveTVDisplay, selectTVDisplay } from './tv-display';
 import { connectTVDisplay } from './tv-display-bridge';
 import { createHardwareCodecDetector } from './media-capabilities';
@@ -54,7 +55,10 @@ function isTVURL(value: string) {
 
 export async function createTVWindow(
   store: UserAgentStore,
-  general = GeneralSettingsStore.open(app.getPath('userData')),
+  general = GeneralSettingsStore.open(
+    app.getPath('userData'),
+    detectSystemLanguage(),
+  ),
 ) {
   const display = selectTVDisplay(
     screen.getAllDisplays(),

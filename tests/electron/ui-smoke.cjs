@@ -80,6 +80,9 @@ async function capture(win, name) {
 app
   .whenReady()
   .then(async () => {
+    // English display language, Polish regional format and secondary language.
+    app.getPreferredSystemLanguages = () => ['en-US', 'pl-PL'];
+    app.getSystemLocale = () => 'pl-PL';
     let cursor = { x: -100000, y: -100000 };
     screen.getCursorScreenPoint = () => cursor;
     await session
@@ -202,13 +205,14 @@ app
       { sender: toolbar, senderFrame: toolbar.mainFrame },
       { sender: shell, senderFrame: { url: shell.getURL() } },
     ])
-      await assert.rejects(async () => setLanguage(event, 'pl'), /Untrusted/);
+      await assert.rejects(async () => setLanguage(event, 'auto'), /Untrusted/);
     await assert.rejects(async () => getRatingsLanguage(trusted), /Untrusted/);
     await assert.rejects(async () => getOptionsLanguage(trusted), /Untrusted/);
     assert.equal((await setLanguage(trusted)).ok, false);
     assert.equal((await setLanguage(trusted, 'pl', 'en')).ok, false);
     assert.equal((await setLanguage(trusted, 'de')).ok, false);
     assert.equal((await state()).general.language, 'en');
+    assert.equal((await state()).general.languagePreference, 'auto');
     assert.equal(
       await ratings.executeJavaScript('window.ratings.getLanguage()'),
       'en',
@@ -229,6 +233,12 @@ app
       window.initialLanguageControl = document.querySelector('#app-language');
       void 0;
     `);
+    const languageControl = () =>
+      shell.executeJavaScript(`(() => {
+        const select = document.getElementById('app-language');
+        return [select.value, select.options[0].textContent, select.disabled];
+      })()`);
+    assert.deepEqual(await languageControl(), ['auto', 'Auto (system)', false]);
     const chooseLanguage = (language) =>
       shell.executeJavaScript(`(() => {
         const languageControl = document.getElementById('app-language');
@@ -273,7 +283,7 @@ app
         await shell.executeJavaScript(
           "[document.documentElement.lang, document.getElementById('app-language').value]",
         ),
-        ['en', 'en'],
+        ['en', 'auto'],
       );
       assert.equal((await state()).general.language, 'en');
       for (const surface of [shell, toolbar, ratings])
@@ -293,6 +303,7 @@ app
       'Polish settings',
     );
     assert.equal((await state()).general.language, 'pl');
+    assert.deepEqual(await languageControl(), ['pl', 'Auto', false]);
     assert.equal(
       JSON.parse(fs.readFileSync(settingsFile, 'utf8')).language,
       'pl',
@@ -402,13 +413,31 @@ app
         ),
       'Polish fullscreen control',
     );
-    await chooseLanguage('en');
+    await chooseLanguage('auto');
     for (const surface of [shell, toolbar, ratings])
       await waitFor(
         () =>
           surface.executeJavaScript("document.documentElement.lang === 'en'"),
-        'English after language switch',
+        'English after switching to Auto',
       );
+    await waitFor(async () => {
+      const [value, label, disabled] = await languageControl();
+      return value === 'auto' && label === 'Auto (system)' && !disabled;
+    }, 'Auto selection');
+    assert.equal((await state()).general.languagePreference, 'auto');
+    assert.equal(
+      JSON.parse(fs.readFileSync(settingsFile, 'utf8')).language,
+      'auto',
+    );
+    await chooseLanguage('en');
+    await waitFor(async () => {
+      const [value, , disabled] = await languageControl();
+      return (
+        value === 'en' &&
+        !disabled &&
+        (await state()).general.languagePreference === 'en'
+      );
+    }, 'manual English with the same effective language');
     assert.equal(await ratingsCanvas(), englishRatings);
     assert.equal(requests.length, requestCount);
     assert.equal((await state()).windowFullscreen, true);
@@ -432,7 +461,7 @@ app
       true,
     );
     checks.push(
-      'language IPC authorization, atomic save, EN/PL switch, focus, draft, ratings canvas and localized options',
+      'language IPC authorization, atomic save, Auto/EN/PL switch, focus, draft, ratings canvas and localized options',
     );
     const toggleFullscreen = ipcMain._invokeHandlers.get(
       'tubevra:toggle-fullscreen',

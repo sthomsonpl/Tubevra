@@ -41,6 +41,7 @@
       "title": "General",
       "subtitle": "Application preferences and quick actions.",
       "language": "Language",
+      "languageAuto": "Auto (system)",
       "languageSaveError": "Could not save the language setting.",
       "languageSaveErrorDetail": "Could not save the language setting. {{detail}}",
       "hardwareAcceleration": "Hardware acceleration",
