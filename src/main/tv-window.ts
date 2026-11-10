@@ -20,8 +20,9 @@ import {
   PRIVACY_POLICY_URL,
   SPONSORBLOCK_URL,
   RYD_URL,
+  SETTINGS_SECTIONS,
 } from '../shared/api';
-import type { AppState, Result } from '../shared/api';
+import type { AppState, Result, SettingsSection } from '../shared/api';
 import type { UserAgentStore } from './user-agent-store';
 import { GeneralSettingsStore } from './general-settings-store';
 import { detectSystemLanguage } from './system-language';
@@ -40,6 +41,8 @@ import { createRatingsPanel } from './ratings-panel';
 import { createExtensionSettingsView } from './extension-settings-view';
 
 const TV_HOME = 'https://www.youtube.com/tv';
+// The local settings view can be recreated while the app is still running.
+let settingsSection: SettingsSection = 'general';
 
 function isTVURL(value: string) {
   try {
@@ -341,6 +344,7 @@ export async function createTVWindow(
     playbackFullscreen,
     windowFullscreen: mainWindow.isFullScreen(),
     settingsOpen,
+    settingsSection,
     loading,
     error,
     codecWarning,
@@ -821,6 +825,16 @@ export async function createTVWindow(
     else if (!contents.isDestroyed()) contents.focus();
     return { ok: true, value: state() };
   });
+  ipcMain.handle(IPC.setSettingsSection, (event, ...args): Result<null> => {
+    assertShell(event);
+    if (event.sender !== local.webContents)
+      throw new Error('Untrusted settings section sender.');
+    const section = SETTINGS_SECTIONS.find((section) => section === args[0]);
+    if (args.length !== 1 || !section)
+      return { ok: false, error: 'Expected one settings section.' };
+    settingsSection = section;
+    return { ok: true, value: null };
+  });
   handle(IPC.updateUserAgents, async (...args) => {
     if (args.length !== 1)
       throw new Error('Expected one User-Agent operation.');
@@ -964,6 +978,7 @@ export async function createTVWindow(
       IPC.updateUserAgents,
       IPC.navigate,
       IPC.setSettingsOpen,
+      IPC.setSettingsSection,
     ])
       ipcMain.removeHandler(channel);
     ipcMain.removeListener(IPC.dispatchTVBack, dispatchBack);

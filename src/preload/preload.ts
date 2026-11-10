@@ -58,6 +58,8 @@ const api: TubevraAPI = {
     ipcRenderer.invoke(IPC.updateUserAgents, command),
   navigate: (action) => ipcRenderer.invoke(IPC.navigate, action),
   setSettingsOpen: (open) => ipcRenderer.invoke(IPC.setSettingsOpen, open),
+  setSettingsSection: (section) =>
+    ipcRenderer.invoke(IPC.setSettingsSection, section),
   onStateChanged: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, state: AppState) =>
       listener(state);

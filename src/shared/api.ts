@@ -30,6 +30,15 @@ export interface GeneralSettingsState {
   restartRequired: boolean;
 }
 
+export const SETTINGS_SECTIONS = [
+  'general',
+  'tv',
+  'user-agents',
+  'extensions',
+  'about',
+] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
 export interface AppState {
   version: string;
   general: GeneralSettingsState;
@@ -39,6 +48,7 @@ export interface AppState {
   playbackFullscreen: boolean;
   windowFullscreen: boolean;
   settingsOpen: boolean;
+  settingsSection: SettingsSection;
   loading: boolean;
   error: string | null;
   codecWarning: string | null;
@@ -75,6 +85,7 @@ export interface TubevraAPI extends ExtensionsAPI {
   updateUserAgents(command: UserAgentCommand): Promise<Result<AppState>>;
   navigate(action: 'back' | 'home'): Promise<Result<AppState>>;
   setSettingsOpen(open: boolean): Promise<Result<AppState>>;
+  setSettingsSection(section: SettingsSection): Promise<Result<null>>;
   onStateChanged(listener: (state: AppState) => void): () => void;
 }
 
@@ -94,6 +105,7 @@ export const IPC = Object.freeze({
   updateUserAgents: 'tubevra:update-user-agents',
   navigate: 'tubevra:navigate',
   setSettingsOpen: 'tubevra:set-settings-open',
+  setSettingsSection: 'tubevra:set-settings-section',
   stateChanged: 'tubevra:state-changed',
   requestTVBack: 'tubevra:request-tv-back',
   dispatchTVBack: 'tubevra:dispatch-tv-back',

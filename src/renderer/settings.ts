@@ -1,4 +1,9 @@
-import type { AppState, Result, UserAgentCommand } from '../shared/api';
+import type {
+  AppState,
+  Result,
+  SettingsSection,
+  UserAgentCommand,
+} from '../shared/api';
 import { PROJECT_GITHUB_URL, PRIVACY_POLICY_URL } from '../shared/api';
 import { mountExtensions } from './extensions/settings';
 import { createWidgetToggle } from './widgets';
@@ -11,10 +16,9 @@ import type { Localization } from './localization';
 
 const tubevraIcon = new URL('../../assets/icon/icon.ico', import.meta.url).href;
 
-type SectionId = 'general' | 'tv' | 'user-agents' | 'extensions' | 'about';
 type PresetTab = 'default' | 'user';
 
-const SECTION_KEYS: Record<SectionId, string> = {
+const SECTION_KEYS: Record<SettingsSection, string> = {
   about: 'settings.about',
   extensions: 'addons',
   general: 'settings.general',
@@ -109,7 +113,7 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
                 </span>
                 <span data-i18n="settings.tv.title"></span>
               </button>
-              <button type="button" class="ui-button nav-item is-current ui-nav-item" data-section="user-agents" aria-current="page">
+              <button type="button" class="ui-button nav-item ui-nav-item" data-section="user-agents" aria-current="false">
                 <span class="nav-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.8 8 10 4.6-1.2 8-5 8-10V7l-8-4Z"/><path d="m9.5 12 1.8 1.8 3.7-3.8"/></svg>
                 </span>
@@ -146,8 +150,8 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
         <div class="settings-workspace">
           <header class="workspace-header">
             <div class="settings-heading">
-              <h1 id="settings-title" data-i18n="presets.title"></h1>
-              <p id="section-subtitle" class="heading-subtitle" data-i18n="presets.subtitle"></p>
+              <h1 id="settings-title"></h1>
+              <p id="section-subtitle" class="heading-subtitle"></p>
             </div>
             <button id="done" class="ui-button secondary done-button" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
@@ -276,7 +280,7 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
             </div>
           </div>
 
-          <div id="panel-user-agents" class="section-panel ua-panel">
+          <div id="panel-user-agents" class="section-panel ua-panel" hidden>
             <div class="settings-layout">
               <aside class="widget-box presets-panel" data-i18n-aria-label="presets.list">
                 <div class="presets-toolbar">
@@ -407,12 +411,12 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
   let creating = false;
   let dirty = false;
   let busy = false;
-  let activeSection: SectionId = 'user-agents';
+  let activeSection: SettingsSection = 'general';
   let activeTab: PresetTab = 'default';
   const selected = () =>
     current?.userAgents.presets.find((preset) => preset.id === selectedId);
 
-  function showSection(section: SectionId) {
+  function showSection(section: SettingsSection) {
     activeSection = section;
     const key = SECTION_KEYS[section];
     element('settings-title').textContent = t(key + '.title');
@@ -428,6 +432,16 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
       const isCurrent = button.dataset.section === section;
       button.classList.toggle('is-current', isCurrent);
       button.setAttribute('aria-current', isCurrent ? 'page' : 'false');
+    }
+  }
+
+  async function selectSection(section: SettingsSection) {
+    showSection(section);
+    try {
+      const result = await window.tubevra.setSettingsSection(section);
+      if (!result.ok) throw new Error(result.error);
+    } catch (cause) {
+      console.error('Cannot remember the settings section:', cause);
     }
   }
 
@@ -611,11 +625,12 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
     if (creating) name.focus();
   }
   function render(state: AppState) {
+    const firstRender = current === null;
     const wasOpen = current?.settingsOpen;
     current = state;
-    if (locale.setLanguage(state.general.language)) {
+    const languageChanged = locale.setLanguage(state.general.language);
+    if (languageChanged) {
       locale.apply(root);
-      showSection(activeSection);
       hardwareAcceleration.input.setAttribute(
         'aria-label',
         t('settings.general.hardwareToggle'),
@@ -623,6 +638,8 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
       renderPresetCopy();
       renderDeleteNote();
     }
+    if (firstRender) showSection(state.settingsSection);
+    else if (languageChanged) showSection(activeSection);
     document.body.classList.toggle('glass-active', state.settingsOpen);
     element('general-restart').hidden = !state.general.restartRequired;
     element('app-version').textContent = state.version;
@@ -688,7 +705,6 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
       controls();
     }
     if (state.settingsOpen && !wasOpen) {
-      showSection(activeSection);
       showTab(activeTab);
       element<HTMLButtonElement>('done').focus();
     }
@@ -768,8 +784,8 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
     '.nav-item[data-section]',
   )) {
     button.addEventListener('click', () => {
-      const target = button.dataset.section as SectionId | undefined;
-      if (target) showSection(target);
+      const target = button.dataset.section as SettingsSection | undefined;
+      if (target) void selectSection(target);
     });
   }
   for (const btn of root.querySelectorAll<HTMLButtonElement>(
@@ -788,8 +804,9 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
       }
     });
   }
-  element('go-user-agents').addEventListener('click', () =>
-    showSection('user-agents'),
+  element('go-user-agents').addEventListener(
+    'click',
+    () => void selectSection('user-agents'),
   );
   element('project-github').addEventListener('click', async (event) => {
     event.preventDefault();

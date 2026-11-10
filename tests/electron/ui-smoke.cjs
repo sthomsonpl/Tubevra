@@ -191,9 +191,11 @@ app
       'ratings view',
     );
     const setLanguageChannel = 'tubevra:set-language';
+    const setSectionChannel = 'tubevra:set-settings-section';
     const ratingsLanguageChannel = 'tubevra:ratings:get-language';
     const optionsLanguageChannel = 'tubevra:options:get-language';
     const setLanguage = ipcMain._invokeHandlers.get(setLanguageChannel);
+    const setSection = ipcMain._invokeHandlers.get(setSectionChannel);
     const getRatingsLanguage = ipcMain._invokeHandlers.get(
       ratingsLanguageChannel,
     );
@@ -204,8 +206,13 @@ app
       { sender: tv, senderFrame: tv.mainFrame },
       { sender: toolbar, senderFrame: toolbar.mainFrame },
       { sender: shell, senderFrame: { url: shell.getURL() } },
-    ])
+    ]) {
       await assert.rejects(async () => setLanguage(event, 'auto'), /Untrusted/);
+      assert.throws(() => setSection(event, 'about'), /Untrusted/);
+    }
+    assert.equal(setSection(trusted).ok, false);
+    assert.equal(setSection(trusted, 'about', 'general').ok, false);
+    assert.equal(setSection(trusted, 'unknown').ok, false);
     await assert.rejects(async () => getRatingsLanguage(trusted), /Untrusted/);
     await assert.rejects(async () => getOptionsLanguage(trusted), /Untrusted/);
     assert.equal((await setLanguage(trusted)).ok, false);
@@ -221,6 +228,30 @@ app
       (await shell.executeJavaScript('window.tubevra.setSettingsOpen(true)'))
         .ok,
       true,
+    );
+    const visibleSection = () =>
+      shell.executeJavaScript(`[
+        document.querySelector('.nav-item[aria-current="page"]').dataset.section,
+        document.querySelector('.section-panel:not([hidden])').id,
+      ]`);
+    assert.deepEqual(await visibleSection(), ['general', 'panel-general']);
+    await shell.executeJavaScript(
+      `document.querySelector('[data-section="user-agents"]').click()`,
+    );
+    await waitFor(
+      async () => (await state()).settingsSection === 'user-agents',
+      'selected settings section reaches the main process',
+    );
+    await click(shell, 'done');
+    await waitFor(async () => !(await state()).settingsOpen, 'settings close');
+    await click(toolbar, 'settings');
+    await waitFor(async () => (await state()).settingsOpen, 'settings reopen');
+    assert.deepEqual(await visibleSection(), [
+      'user-agents',
+      'panel-user-agents',
+    ]);
+    checks.push(
+      'General opens by default and the selected section survives closing settings',
     );
     await shell.executeJavaScript(`
       document.querySelector('#new-preset').click();
@@ -1580,6 +1611,7 @@ app
     );
     for (const channel of [
       setLanguageChannel,
+      setSectionChannel,
       ratingsLanguageChannel,
       optionsLanguageChannel,
     ])

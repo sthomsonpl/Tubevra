@@ -9,3 +9,4 @@
 
 ### Fixed
 -Fixed repeated Back actions closing the YouTube TV view and leaving the app unresponsive with “Tubevra is unavailable.”
+-Fixed Settings to open on General after each app launch.
