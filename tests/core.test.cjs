@@ -302,6 +302,13 @@ test('automatic language uses only the first preferred system language and falls
     [['PL-pl', 'en-US'], 'pl'],
     [['en-US', 'pl-PL'], 'en'],
     [['de-DE', 'pl-PL'], 'en'],
+    [['pl_PL'], 'pl'],
+    [['pl_PL.UTF-8', 'en_US.UTF-8'], 'pl'],
+    [['pl@euro'], 'pl'],
+    [['en_US.UTF-8', 'pl_PL'], 'en'],
+    [['C'], 'en'],
+    [['POSIX'], 'en'],
+    [['plx_PL'], 'en'],
     [[], 'en'],
   ])
     assert.equal(
