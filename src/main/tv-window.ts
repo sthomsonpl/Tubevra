@@ -840,11 +840,15 @@ export async function createTVWindow(
       throw new Error('Expected one User-Agent operation.');
     const previous = store.activeUserAgent();
     const previousId = store.snapshot().activeId;
-    currentTVURL();
     await store.update(args[0]);
     publish();
     const current = store.activeUserAgent();
-    if (current !== previous || store.snapshot().activeId !== previousId) {
+    if (
+      (current !== previous || store.snapshot().activeId !== previousId) &&
+      // Saving does not depend on the view; a destroyed view picks up the
+      // saved User-Agent when it is created again.
+      !contents.isDestroyed()
+    ) {
       contents.setUserAgent(current);
       // Explicit UA for the current Leanback route; preserve cookies/session.
       try {
