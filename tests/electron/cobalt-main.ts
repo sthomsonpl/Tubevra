@@ -133,7 +133,11 @@ app
     ).value;
     assert.equal(fallbackState.loading, false);
     assert.equal(fallbackState.error, null);
-    assert.match(fallbackState.codecWarning, /Forced codec discovery failure/);
+    assert.equal(fallbackState.codecWarning.reason, 'detectionFailed');
+    assert.match(
+      fallbackState.codecWarning.detail,
+      /Forced codec discovery failure/,
+    );
     assert.equal(
       await shell.executeJavaScript(
         'document.querySelector("#service-error").classList.contains("warning-banner")',
@@ -645,10 +649,10 @@ app
     assert.equal((await read()).hardwareCodecs.status, 'ready');
     assert.equal(codecProbes, 2);
     app.emit('child-process-gone', {}, { type: 'GPU' });
-    assert.match(
+    assert.equal(
       (await shell.executeJavaScript('window.tubevra.getState()')).value
-        .codecWarning,
-      /GPU process stopped/,
+        .codecWarning.reason,
+      'gpuStopped',
     );
     await shell.executeJavaScript('window.tubevra.reloadTV()');
     assert.equal((await read()).hardwareCodecs.status, 'ready');

@@ -145,6 +145,11 @@
     "forceWarningDescription": "They may lack hardware acceleration. Playback may lag, stutter, use more CPU or fail.",
     "compatibilityWarning": "Codec compatibility warning",
     "compatibilityDescription": "Codec compatibility could not be fully verified. Playback may stutter or fail.",
+    "warning": {
+      "gpuStopped": "Hardware codec filtering is unavailable because the GPU process stopped. Reload YouTube to retry. Native codec support will be used for allowed codecs.",
+      "detectionFailed": "Hardware codec filtering is unavailable: {{detail}} Native codec support will be used for allowed codecs.",
+      "playerReported": "{{detail}}"
+    },
     "resizeError": "Cannot resize codec settings."
   },
   "addons": {

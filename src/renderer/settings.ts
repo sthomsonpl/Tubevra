@@ -685,7 +685,9 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
         if (bannerDesc)
           bannerDesc.textContent =
             t('codecs.compatibilityDescription') +
-            (state.codecWarning ? ` ${state.codecWarning}` : '');
+            (state.codecWarning
+              ? ` ${t(`codecs.warning.${state.codecWarning.reason}`, { detail: state.codecWarning.detail })}`
+              : '');
       }
     }
     element('loading-note').textContent = state.loading

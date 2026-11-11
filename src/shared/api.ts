@@ -39,6 +39,12 @@ export const SETTINGS_SECTIONS = [
 ] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
+// `detail` is a raw technical message and is not localized.
+export interface CodecWarning {
+  reason: 'gpuStopped' | 'detectionFailed' | 'playerReported';
+  detail?: string;
+}
+
 export interface AppState {
   version: string;
   general: GeneralSettingsState;
@@ -51,7 +57,7 @@ export interface AppState {
   settingsSection: SettingsSection;
   loading: boolean;
   error: string | null;
-  codecWarning: string | null;
+  codecWarning: CodecWarning | null;
   codecReloadRequired: boolean;
 }
 

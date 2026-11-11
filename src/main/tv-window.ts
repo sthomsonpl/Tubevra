@@ -22,7 +22,12 @@ import {
   RYD_URL,
   SETTINGS_SECTIONS,
 } from '../shared/api';
-import type { AppState, Result, SettingsSection } from '../shared/api';
+import type {
+  AppState,
+  CodecWarning,
+  Result,
+  SettingsSection,
+} from '../shared/api';
 import type { UserAgentStore } from './user-agent-store';
 import { GeneralSettingsStore } from './general-settings-store';
 import { detectSystemLanguage } from './system-language';
@@ -295,7 +300,7 @@ export async function createTVWindow(
   mainWindow.contentView.on('bounds-changed', resize);
 
   let error: string | null = null;
-  let codecWarning: string | null = null;
+  let codecWarning: CodecWarning | null = null;
   let codecReloadRequired = false;
   let playbackFullscreen = false;
   let settingsOpen = false;
@@ -435,11 +440,13 @@ export async function createTVWindow(
     reportError,
   );
   const codecDetector = createHardwareCodecDetector();
-  const warnCodecs = (message: string) => {
-    codecWarning = message;
+  const warnCodecs = (warning: CodecWarning) => {
+    codecWarning = warning;
     publish();
   };
-  const codecBridge = connectHardwareCodecs(ipcMain, contents, warnCodecs);
+  const codecBridge = connectHardwareCodecs(ipcMain, contents, (detail) =>
+    warnCodecs({ reason: 'playerReported', detail }),
+  );
   let codecBootstrap: CodecBootstrapSnapshot | undefined;
   let loadRevision = 0;
   let gpuRevision = 0;
@@ -462,7 +469,7 @@ export async function createTVWindow(
         hardware: { status: 'error', error: message },
       };
       codecBridge.update(codecBootstrap);
-      warnCodecs(message);
+      warnCodecs({ reason: 'gpuStopped' });
     }
   };
   app.on('child-process-gone', onChildProcessGone);
@@ -525,7 +532,12 @@ export async function createTVWindow(
         codecBridge.update(codecBootstrap);
         if (codecBootstrap.hardware?.status === 'error')
           warnCodecs(
-            `Hardware codec filtering unavailable: ${codecBootstrap.hardware.error} Native codec support will be used for allowed codecs.`,
+            gpu === gpuRevision
+              ? {
+                  reason: 'detectionFailed',
+                  detail: codecBootstrap.hardware.error,
+                }
+              : { reason: 'gpuStopped' },
           );
       }
       if (mainWindow.isDestroyed() || contents.isDestroyed()) return;

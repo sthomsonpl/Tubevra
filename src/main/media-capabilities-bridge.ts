@@ -9,7 +9,7 @@ import { isTVDisplayURL } from '../shared/tv-display';
 export function connectHardwareCodecs(
   ipc: IpcMain,
   contents: WebContents,
-  reportWarning: (message: string) => void,
+  reportWarning: (detail: string) => void,
 ) {
   let snapshot: CodecBootstrapSnapshot | undefined;
   let disposed = false;
@@ -48,7 +48,7 @@ export function connectHardwareCodecs(
       args[0].length > 0 &&
       args[0].length <= 1000
     )
-      reportWarning(`Codec compatibility warning: ${args[0]}`);
+      reportWarning(args[0]);
   };
   ipc.on(HARDWARE_CODECS_IPC.bootstrap, bootstrap);
   ipc.on(HARDWARE_CODECS_IPC.failure, failure);

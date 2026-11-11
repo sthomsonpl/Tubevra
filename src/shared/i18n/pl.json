@@ -145,6 +145,11 @@
     "forceWarningDescription": "Wymuszone kodeki mogą działać bez akceleracji sprzętowej, co może zwiększyć obciążenie procesora. Film może się zacinać lub w ogóle się nie odtworzyć.",
     "compatibilityWarning": "Ostrzeżenie o zgodności kodeków",
     "compatibilityDescription": "Nie udało się w pełni sprawdzić zgodności kodeków. Odtwarzanie może się zacinać lub się nie rozpocząć.",
+    "warning": {
+      "gpuStopped": "Filtrowanie kodeków sprzętowych jest niedostępne, ponieważ proces GPU został zatrzymany. Odśwież YouTube, aby spróbować ponownie. Dla dozwolonych kodeków zostanie użyta natywna obsługa.",
+      "detectionFailed": "Filtrowanie kodeków sprzętowych jest niedostępne: {{detail}} Dla dozwolonych kodeków zostanie użyta natywna obsługa.",
+      "playerReported": "{{detail}}"
+    },
     "resizeError": "Nie można zmienić rozmiaru okna ustawień kodeków."
   },
   "addons": {
