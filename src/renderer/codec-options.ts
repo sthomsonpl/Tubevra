@@ -109,12 +109,16 @@ export function mountCodecOptions(root: HTMLElement, locale: Localization) {
       } else {
         feedback.textContent = locale.error(result.error);
         // A failed reload may follow a committed save; keep that distinction visible.
-        const latest = await window.codecSettings.get();
-        if (latest.ok && latest.value.reloadRequired) {
-          readState(latest.value);
-          feedback.textContent = t('common.savedWithError', {
-            detail: result.error,
-          });
+        try {
+          const latest = await window.codecSettings.get();
+          if (latest.ok && latest.value.reloadRequired) {
+            readState(latest.value);
+            feedback.textContent = t('common.savedWithError', {
+              detail: result.error,
+            });
+          }
+        } catch {
+          // Keep the specific save error shown above.
         }
       }
     } catch {
