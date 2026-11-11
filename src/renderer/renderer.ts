@@ -34,4 +34,11 @@ async function mount() {
   else mountSettings(root, locale);
 }
 
-void mount();
+// Translations may be what failed, so the message is not localized.
+function showStartupError(error: unknown) {
+  console.error('Tubevra interface failed to start:', error);
+  const target = document.querySelector<HTMLElement>('#app') ?? document.body;
+  target.textContent = 'Tubevra interface failed to start.';
+}
+
+mount().catch(showStartupError);
