@@ -1,4 +1,5 @@
 import type {
+  HookCleanup,
   HookExtensionStart,
   HookReport,
   PageConfiguration,
@@ -23,12 +24,48 @@ export function createHookRuntime(
   let closed = false;
   let sequence = 0;
   const targets = new WeakMap<object, Set<PropertyKey>>();
+  const jsonCallbacks = new Set<(result: unknown) => void>();
+  let restoreJsonParse: HookCleanup | undefined;
   const instances = new Map<
     string,
     { instance: string; cleanups: (() => undefined)[]; abort: AbortController }
   >();
   const reload = new Map<string, string>();
   const reports: HookReport[] = [];
+  function ownFunction(
+    target: object,
+    key: PropertyKey,
+    wrap: (
+      original: (...args: unknown[]) => unknown,
+    ) => (...args: unknown[]) => unknown,
+  ): HookCleanup {
+    let owned = targets.get(target);
+    if (!owned) targets.set(target, (owned = new Set()));
+    if (owned.has(key)) throw Error('Conflicting hook target.');
+    const descriptor = Object.getOwnPropertyDescriptor(target, key);
+    if (
+      !descriptor ||
+      typeof descriptor.value !== 'function' ||
+      !descriptor.configurable
+    )
+      throw Error('Hook target must be an own configurable function.');
+    const wrapper = wrap(descriptor.value);
+    Object.defineProperty(target, key, { ...descriptor, value: wrapper });
+    owned.add(key);
+    return () => {
+      const current = Object.getOwnPropertyDescriptor(target, key);
+      if (
+        current?.value !== wrapper ||
+        current.configurable !== descriptor.configurable ||
+        current.enumerable !== descriptor.enumerable ||
+        current.writable !== descriptor.writable
+      )
+        throw Error('Hook restoration conflict.');
+      Object.defineProperty(target, key, descriptor);
+      owned.delete(key);
+      return undefined;
+    };
+  }
   function emit(
     id: string,
     instance: string,
@@ -130,99 +167,113 @@ export function createHookRuntime(
       let accepting = true;
       let failure: string | null = null;
       try {
-        const cleanup = starts[item.id]({
-          signal: instance.abort.signal,
-          wrap(target, key, intercept) {
-            if (!accepting) throw Error('Hook installation context is closed.');
-            let owned = targets.get(target);
-            if (!owned) {
-              owned = new Set();
-              targets.set(target, owned);
-            }
-            if (owned.has(key)) throw Error('Conflicting hook target.');
-            const descriptor = Object.getOwnPropertyDescriptor(target, key);
-            if (
-              !descriptor ||
-              typeof descriptor.value !== 'function' ||
-              !descriptor.configurable
-            )
-              throw Error('Hook target must be an own configurable function.');
-            const original = descriptor.value;
-            const wrapper = function (this: unknown, ...args: unknown[]) {
-              if (instance.abort.signal.aborted)
-                return Reflect.apply(original, this, args);
-              let originalThrew = false;
-              let originalError: unknown;
-              const invokeOriginal = function (
-                this: unknown,
-                ...values: unknown[]
-              ) {
+        const cleanup = starts[item.id](
+          {
+            signal: instance.abort.signal,
+            onJsonParsed(callback) {
+              if (!accepting)
+                throw Error('Hook installation context is closed.');
+              if (typeof callback !== 'function')
+                throw Error('Invalid JSON callback.');
+              restoreJsonParse ??= ownFunction(
+                JSON,
+                'parse',
+                (original) =>
+                  function (this: unknown, ...args: unknown[]) {
+                    const result = Reflect.apply(original, this, args);
+                    for (const notify of jsonCallbacks) notify(result);
+                    return result;
+                  },
+              );
+              const notify = (result: unknown) => {
+                if (instance.abort.signal.aborted) return;
                 try {
-                  return Reflect.apply(original, this, values);
+                  callback(result);
                 } catch (cause) {
-                  originalThrew = true;
-                  originalError = cause;
+                  if (!instance.abort.signal.aborted) {
+                    stop(item.id);
+                    emit(item.id, instance.instance, 'error', String(cause));
+                  }
                   throw cause;
                 }
               };
-              // Preserve original exceptions; interceptor failures propagate without retry.
-              try {
-                return intercept(invokeOriginal, this, args);
-              } catch (cause) {
-                if (
-                  !instance.abort.signal.aborted &&
-                  !(originalThrew && Object.is(cause, originalError))
-                ) {
-                  stop(item.id);
-                  emit(item.id, instance.instance, 'error', String(cause));
-                }
-                throw cause;
-              }
-            };
-            Object.defineProperty(target, key, {
-              ...descriptor,
-              value: wrapper,
-            });
-            owned.add(key);
-            instance.cleanups.push(() => {
-              const current = Object.getOwnPropertyDescriptor(target, key);
-              if (
-                current?.value !== wrapper ||
-                current.configurable !== descriptor.configurable ||
-                current.enumerable !== descriptor.enumerable ||
-                current.writable !== descriptor.writable
-              ) {
-                reload.set(
-                  item.id,
-                  'Hook target changed; restoration would overwrite another owner.',
-                );
-                throw Error('Hook restoration conflict.');
-              }
-              Object.defineProperty(target, key, descriptor);
-              owned.delete(key);
-              return undefined;
-            });
+              jsonCallbacks.add(notify);
+              instance.cleanups.push(() => {
+                jsonCallbacks.delete(notify);
+                if (jsonCallbacks.size) return undefined;
+                const restore = restoreJsonParse!;
+                restoreJsonParse = undefined;
+                return restore();
+              });
+            },
+            wrap(target, key, intercept) {
+              if (!accepting)
+                throw Error('Hook installation context is closed.');
+              const restore = ownFunction(
+                target,
+                key,
+                (original) =>
+                  function (this: unknown, ...args: unknown[]) {
+                    if (instance.abort.signal.aborted)
+                      return Reflect.apply(original, this, args);
+                    let originalThrew = false;
+                    let originalError: unknown;
+                    const invokeOriginal = function (
+                      this: unknown,
+                      ...values: unknown[]
+                    ) {
+                      try {
+                        return Reflect.apply(original, this, values);
+                      } catch (cause) {
+                        originalThrew = true;
+                        originalError = cause;
+                        throw cause;
+                      }
+                    };
+                    // Preserve original exceptions; interceptor failures propagate without retry.
+                    try {
+                      return intercept(invokeOriginal, this, args);
+                    } catch (cause) {
+                      if (
+                        !instance.abort.signal.aborted &&
+                        !(originalThrew && Object.is(cause, originalError))
+                      ) {
+                        stop(item.id);
+                        emit(
+                          item.id,
+                          instance.instance,
+                          'error',
+                          String(cause),
+                        );
+                      }
+                      throw cause;
+                    }
+                  },
+              );
+              instance.cleanups.push(restore);
+            },
+            onCleanup(value) {
+              if (typeof value !== 'function')
+                throw Error('Invalid cleanup registration.');
+              if (instance.abort.signal.aborted) {
+                if (value() !== undefined)
+                  throw Error('Hook cleanup must be synchronous.');
+              } else instance.cleanups.push(value);
+            },
+            reportError(message) {
+              if (instance.abort.signal.aborted || closed) return;
+              failure = String(message);
+              if (!accepting) stop(item.id);
+              emit(item.id, instance.instance, 'error', failure);
+            },
+            requireReload(reason) {
+              if (instance.abort.signal.aborted || closed) return;
+              reload.set(item.id, String(reason).slice(0, 2000));
+              if (!accepting) emit(item.id, instance.instance, 'active');
+            },
           },
-          onCleanup(value) {
-            if (typeof value !== 'function')
-              throw Error('Invalid cleanup registration.');
-            if (instance.abort.signal.aborted) {
-              if (value() !== undefined)
-                throw Error('Hook cleanup must be synchronous.');
-            } else instance.cleanups.push(value);
-          },
-          reportError(message) {
-            if (instance.abort.signal.aborted || closed) return;
-            failure = String(message);
-            if (!accepting) stop(item.id);
-            emit(item.id, instance.instance, 'error', failure);
-          },
-          requireReload(reason) {
-            if (instance.abort.signal.aborted || closed) return;
-            reload.set(item.id, String(reason).slice(0, 2000));
-            if (!accepting) emit(item.id, instance.instance, 'active');
-          },
-        });
+          item.options,
+        );
         if (
           typeof cleanup !== 'function' ||
           typeof (cleanup as unknown as { then?: unknown }).then === 'function'

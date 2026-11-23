@@ -3,6 +3,7 @@ import type { BrowserWindow } from 'electron';
 import path from 'node:path';
 import type { TubervaExtensions } from '../extensions/tuberva-extensions';
 import type { RydPresentation } from '../extensions/return-youtube-dislike/presentation';
+import type { Language } from '../shared/i18n/language';
 import { RATINGS_IPC, type RatingsSnapshot } from '../shared/ratings';
 import { TOOLBAR_STYLE } from './toolbar-style';
 
@@ -66,6 +67,7 @@ export function createRatingsPanel(
   url: string,
   engine: TubervaExtensions,
   changed: () => void,
+  getLanguage: () => Language,
 ) {
   const view = new WebContentsView({
     webPreferences: {
@@ -125,7 +127,7 @@ export function createRatingsPanel(
     publish(service.snapshot());
   };
   const authority = engine.onAuthorityChange(refresh);
-  ipcMain.handle(RATINGS_IPC.get, (event, ...args) => {
+  function assertRatings(event: Electron.IpcMainInvokeEvent, args: unknown[]) {
     if (
       closed ||
       args.length ||
@@ -134,6 +136,13 @@ export function createRatingsPanel(
       event.senderFrame.url !== url
     )
       throw Error('Untrusted ratings request.');
+  }
+  ipcMain.handle(RATINGS_IPC.getLanguage, (event, ...args) => {
+    assertRatings(event, args);
+    return getLanguage();
+  });
+  ipcMain.handle(RATINGS_IPC.get, (event, ...args) => {
+    assertRatings(event, args);
     return { ...state };
   });
   view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -143,6 +152,10 @@ export function createRatingsPanel(
   view.webContents.on('will-redirect', (event) => event.preventDefault());
   return {
     view,
+    publishLanguage() {
+      if (!view.webContents.isDestroyed())
+        view.webContents.send(RATINGS_IPC.languageChanged, getLanguage());
+    },
     refresh,
     setAllowed(value: boolean) {
       allowed = value;
@@ -177,6 +190,7 @@ export function createRatingsPanel(
       release();
       void authority();
       ipcMain.removeHandler(RATINGS_IPC.get);
+      ipcMain.removeHandler(RATINGS_IPC.getLanguage);
       // The parent is already closed here; its native hierarchy is being torn
       // down. Only close the child WebContents, as for the existing TV/dock.
       if (!view.webContents.isDestroyed()) view.webContents.close();

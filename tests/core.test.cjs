@@ -25,7 +25,15 @@ const { UserAgentStore } = require('../src/main/user-agent-store.ts');
 const {
   GeneralSettingsStore,
 } = require('../src/main/general-settings-store.ts');
+const { detectSystemLanguage } = require('../src/main/system-language.ts');
+const { createI18n } = require('../src/shared/i18n/i18n.ts');
+const { SUPPORTED_LANGUAGES } = require('../src/shared/i18n/language.ts');
 const { USER_AGENT_PRESETS } = require('../src/config/user-agents.ts');
+const {
+  isCodecPreferences,
+  freezeCodecPreferences,
+  isCodecBootstrapSnapshot,
+} = require('../src/shared/media-capabilities.ts');
 
 async function fixture(t) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tubevra-core-'));
@@ -182,19 +190,28 @@ test('hardware acceleration defaults on, persists across restarts and clears a r
   const { directory } = await fixture(t);
   const store = GeneralSettingsStore.open(directory);
   assert.deepEqual(store.snapshot(), {
+    language: 'en',
+    languagePreference: 'auto',
     playbackResolution: 'auto',
+    codecPreferences: { mode: 'auto', allowedCodecs: ['vp9', 'av1'] },
     hardwareAcceleration: true,
     restartRequired: false,
   });
   await store.setHardwareAcceleration(false);
   assert.deepEqual(store.snapshot(), {
+    language: 'en',
+    languagePreference: 'auto',
     playbackResolution: 'auto',
+    codecPreferences: { mode: 'auto', allowedCodecs: ['vp9', 'av1'] },
     hardwareAcceleration: false,
     restartRequired: true,
   });
   const reopened = GeneralSettingsStore.open(directory);
   assert.deepEqual(reopened.snapshot(), {
+    language: 'en',
+    languagePreference: 'auto',
     playbackResolution: 'auto',
+    codecPreferences: { mode: 'auto', allowedCodecs: ['vp9', 'av1'] },
     hardwareAcceleration: false,
     restartRequired: false,
   });
@@ -203,7 +220,10 @@ test('hardware acceleration defaults on, persists across restarts and clears a r
   await reopened.setHardwareAcceleration(true);
   assert.equal(reopened.snapshot().restartRequired, true);
   assert.deepEqual(GeneralSettingsStore.open(directory).snapshot(), {
+    language: 'en',
+    languagePreference: 'auto',
     playbackResolution: 'auto',
+    codecPreferences: { mode: 'auto', allowedCodecs: ['vp9', 'av1'] },
     hardwareAcceleration: true,
     restartRequired: false,
   });
@@ -240,6 +260,8 @@ test('invalid general configuration is reported and preserved', async (t) => {
     JSON.stringify({ version: 2, hardwareAcceleration: false }),
     JSON.stringify({ version: 1, hardwareAcceleration: 'false' }),
     JSON.stringify({ version: 1, hardwareAcceleration: false, extra: true }),
+    JSON.stringify({ version: 1, hardwareAcceleration: false, language: 'de' }),
+    JSON.stringify({ version: 1, hardwareAcceleration: false, language: null }),
     ' '.repeat(4097),
   ]) {
     await fs.writeFile(file, content);
@@ -255,7 +277,10 @@ test('a failed general settings write preserves the running preference and recov
   await fs.mkdir(file);
   await assert.rejects(store.setHardwareAcceleration(false));
   assert.deepEqual(store.snapshot(), {
+    language: 'en',
+    languagePreference: 'auto',
     playbackResolution: 'auto',
+    codecPreferences: { mode: 'auto', allowedCodecs: ['vp9', 'av1'] },
     hardwareAcceleration: true,
     restartRequired: false,
   });
@@ -269,6 +294,146 @@ test('a failed general settings write preserves the running preference and recov
     GeneralSettingsStore.open(directory).snapshot().hardwareAcceleration,
     false,
   );
+});
+
+test('automatic language uses only the first preferred system language and falls back to English', (t) => {
+  for (const [preferred, expected] of [
+    [['pl'], 'pl'],
+    [['PL-pl', 'en-US'], 'pl'],
+    [['en-US', 'pl-PL'], 'en'],
+    [['de-DE', 'pl-PL'], 'en'],
+    [['pl_PL'], 'pl'],
+    [['pl_PL.UTF-8', 'en_US.UTF-8'], 'pl'],
+    [['pl@euro'], 'pl'],
+    [['en_US.UTF-8', 'pl_PL'], 'en'],
+    [['C'], 'en'],
+    [['POSIX'], 'en'],
+    [['plx_PL'], 'en'],
+    [[], 'en'],
+  ])
+    assert.equal(
+      detectSystemLanguage(() => preferred),
+      expected,
+    );
+
+  const warn = t.mock.method(console, 'warn', () => {});
+  assert.equal(
+    detectSystemLanguage(() => {
+      throw new Error('System language unavailable.');
+    }),
+    'en',
+  );
+  assert.equal(warn.mock.callCount(), 1);
+});
+
+test('language defaults on legacy profiles without rewriting them and persists alongside other preferences', async (t) => {
+  const { directory } = await fixture(t);
+  const file = path.join(directory, 'general-settings.json');
+  const legacy = JSON.stringify({ version: 1, hardwareAcceleration: false });
+  await fs.writeFile(file, legacy);
+  const store = GeneralSettingsStore.open(directory, 'pl');
+  assert.equal(store.snapshot().language, 'pl');
+  assert.equal(store.snapshot().languagePreference, 'auto');
+  assert.equal(await fs.readFile(file, 'utf8'), legacy);
+  for (const value of ['de', 'PL', 'pl-PL', undefined, null, {}])
+    await assert.rejects(store.setLanguage(value), /Invalid language/);
+  assert.equal(await fs.readFile(file, 'utf8'), legacy);
+  await Promise.all([
+    store.setLanguage('pl'),
+    store.setPlaybackResolution('4k'),
+    store.setCodecPreferences({ mode: 'manual', allowedCodecs: ['av1'] }),
+  ]);
+  assert.deepEqual(GeneralSettingsStore.open(directory).snapshot(), {
+    language: 'pl',
+    languagePreference: 'pl',
+    playbackResolution: '4k',
+    codecPreferences: { mode: 'manual', allowedCodecs: ['av1'] },
+    hardwareAcceleration: false,
+    restartRequired: false,
+  });
+  assert.equal(JSON.parse(await fs.readFile(file, 'utf8')).version, 1);
+});
+
+test('explicit language overrides the system and a saved Auto resolves again on restart', async (t) => {
+  const { directory } = await fixture(t);
+  const store = GeneralSettingsStore.open(directory, 'pl');
+  assert.equal(store.snapshot().language, 'pl');
+  assert.equal(store.snapshot().languagePreference, 'auto');
+  assert.equal((await store.setLanguage('en')).language, 'en');
+  assert.equal(
+    GeneralSettingsStore.open(directory, 'pl').snapshot().language,
+    'en',
+  );
+  assert.equal((await store.setLanguage('auto')).language, 'pl');
+  const reopened = GeneralSettingsStore.open(directory, 'en').snapshot();
+  assert.equal(reopened.languagePreference, 'auto');
+  assert.equal(reopened.language, 'en');
+});
+
+test('a failed language write preserves the active language and can be retried', async (t) => {
+  const { directory } = await fixture(t);
+  const store = GeneralSettingsStore.open(directory);
+  const file = path.join(directory, 'general-settings.json');
+  await fs.mkdir(file);
+  await assert.rejects(store.setLanguage('pl'));
+  assert.equal(store.snapshot().language, 'en');
+  assert.equal(store.snapshot().languagePreference, 'auto');
+  await fs.rmdir(file);
+  await store.setLanguage('pl');
+  assert.equal(GeneralSettingsStore.open(directory).snapshot().language, 'pl');
+});
+
+test('translation catalogs contain matching messages and all locale-specific plural forms', async () => {
+  const i18n = await createI18n('pl');
+  const flatten = (object, prefix = '') =>
+    Object.entries(object).flatMap(([key, value]) =>
+      typeof value === 'string'
+        ? [[prefix + key, value]]
+        : flatten(value, prefix + key + '.'),
+    );
+  const pluralSuffix = /_(zero|one|two|few|many|other)$/;
+  const english = new Map(flatten(i18n.getResourceBundle('en', 'translation')));
+  for (const language of SUPPORTED_LANGUAGES) {
+    const catalog = new Map(
+      flatten(i18n.getResourceBundle(language, 'translation')),
+    );
+    const forms = new Intl.PluralRules(language).resolvedOptions()
+      .pluralCategories;
+    const expected = new Set();
+    for (const key of english.keys()) {
+      if (pluralSuffix.test(key)) {
+        for (const form of forms)
+          expected.add(key.replace(pluralSuffix, '_' + form));
+      } else expected.add(key);
+    }
+    assert.deepEqual(new Set(catalog.keys()), expected, language);
+    for (const [key, text] of catalog) {
+      assert.ok(text.trim(), `${language}:${key}`);
+      const source =
+        english.get(key) ?? english.get(key.replace(pluralSuffix, '_other'));
+      const placeholders = (value) =>
+        (value.match(/{{\s*\w+\s*}}/g) ?? []).sort();
+      assert.deepEqual(
+        placeholders(text),
+        placeholders(source),
+        `${language}:${key}`,
+      );
+    }
+  }
+  assert.equal(i18n.t('settings.general.language'), 'Język');
+  assert.equal(i18n.t('settings.general.languageAuto'), 'Auto');
+  for (const [count, expected] of [
+    [1, '1 polubienie'],
+    [2, '2 polubienia'],
+    [5, '5 polubień'],
+  ])
+    assert.equal(
+      i18n.t('ratings.likes', { count, formattedCount: String(count) }),
+      expected,
+    );
+  await i18n.changeLanguage('en');
+  assert.equal(i18n.t('settings.general.language'), 'Language');
+  assert.equal(i18n.t('settings.general.languageAuto'), 'Auto (system)');
 });
 
 test('playback resolution migrates old settings and serializes independent preferences', async (t) => {
@@ -316,5 +481,160 @@ test('failed resolution persistence preserves the running preference and recover
   assert.equal(
     GeneralSettingsStore.open(directory).snapshot().playbackResolution,
     '1440p',
+  );
+});
+
+const invalidCodecPreferences = [
+  null,
+  undefined,
+  [],
+  {},
+  { mode: 'AUTO', allowedCodecs: [] },
+  { mode: 'manual' },
+  { mode: 'manual', allowedCodecs: 'vp9' },
+  { mode: 'manual', allowedCodecs: ['h264'] },
+  { mode: 'manual', allowedCodecs: ['hevc'] },
+  { mode: 'manual', allowedCodecs: ['vp9', 'vp9'] },
+  { mode: 'manual', allowedCodecs: [null] },
+  { mode: 'manual', allowedCodecs: Array(1) },
+  { mode: 'manual', allowedCodecs: [], extra: true },
+];
+
+test('codec contracts reject invalid preferences and separate force from hardware detection', () => {
+  for (const invalid of invalidCodecPreferences) {
+    assert.equal(isCodecPreferences(invalid), false);
+    assert.throws(() => freezeCodecPreferences(invalid));
+  }
+  for (const mode of ['auto', 'manual', 'force']) {
+    for (const allowedCodecs of [[], ['vp9'], ['av1'], ['vp9', 'av1']]) {
+      const preferences = { mode, allowedCodecs };
+      assert.equal(isCodecPreferences(preferences), true);
+      const hardware =
+        mode === 'force' ? null : { status: 'disabled', profiles: [] };
+      assert.equal(isCodecBootstrapSnapshot({ preferences, hardware }), true);
+      assert.equal(
+        isCodecBootstrapSnapshot({ preferences, hardware, extra: true }),
+        false,
+      );
+      assert.equal(
+        isCodecBootstrapSnapshot({
+          preferences,
+          hardware:
+            mode === 'force'
+              ? { status: 'ready', profiles: ['vp9 profile0'] }
+              : null,
+        }),
+        false,
+      );
+    }
+  }
+  assert.equal(isCodecBootstrapSnapshot(null), false);
+  assert.equal(
+    isCodecBootstrapSnapshot({
+      preferences: { mode: 'auto', allowedCodecs: [] },
+      hardware: { status: 'ready', profiles: ['unknown'] },
+    }),
+    false,
+  );
+});
+
+test('codec settings migrate version 1 without rewriting it and preserve independent preferences', async (t) => {
+  const { directory } = await fixture(t);
+  const file = path.join(directory, 'general-settings.json');
+  for (const playbackResolution of [undefined, '4k']) {
+    const content = JSON.stringify({
+      version: 1,
+      hardwareAcceleration: false,
+      playbackResolution,
+    });
+    await fs.writeFile(file, content);
+    const store = GeneralSettingsStore.open(directory);
+    assert.deepEqual(store.snapshot().codecPreferences, {
+      mode: 'auto',
+      allowedCodecs: ['vp9', 'av1'],
+    });
+    assert.equal(await fs.readFile(file, 'utf8'), content);
+    await Promise.all([
+      store.setCodecPreferences({ mode: 'manual', allowedCodecs: ['av1'] }),
+      store.setPlaybackResolution('8k'),
+      store.setHardwareAcceleration(true),
+    ]);
+    await store.setCodecPreferences({ mode: 'auto', allowedCodecs: ['av1'] });
+    const reopened = GeneralSettingsStore.open(directory).snapshot();
+    assert.deepEqual(reopened.codecPreferences, {
+      mode: 'auto',
+      allowedCodecs: ['av1'],
+    });
+    assert.equal(reopened.playbackResolution, '8k');
+    assert.equal(reopened.hardwareAcceleration, true);
+    await store.setCodecPreferences({ mode: 'force', allowedCodecs: [] });
+    assert.deepEqual(
+      GeneralSettingsStore.open(directory).snapshot().codecPreferences,
+      { mode: 'force', allowedCodecs: [] },
+    );
+  }
+});
+
+test('invalid codec requests and files are preserved without partial recovery', async (t) => {
+  const { directory } = await fixture(t);
+  const file = path.join(directory, 'general-settings.json');
+  const store = GeneralSettingsStore.open(directory);
+  await store.setCodecPreferences({ mode: 'manual', allowedCodecs: ['vp9'] });
+  const saved = await fs.readFile(file, 'utf8');
+  for (const invalid of invalidCodecPreferences) {
+    await assert.rejects(store.setCodecPreferences(invalid));
+    assert.equal(await fs.readFile(file, 'utf8'), saved);
+    assert.deepEqual(store.snapshot().codecPreferences, {
+      mode: 'manual',
+      allowedCodecs: ['vp9'],
+    });
+    if (invalid === undefined) continue; // Absent field is the supported legacy format.
+    const content = JSON.stringify({
+      version: 1,
+      hardwareAcceleration: true,
+      codecPreferences: invalid,
+    });
+    await fs.writeFile(file, content);
+    assert.throws(() => GeneralSettingsStore.open(directory), /preserved/);
+    assert.equal(await fs.readFile(file, 'utf8'), content);
+    await fs.writeFile(file, saved);
+  }
+  await store.setCodecPreferences({ mode: 'force', allowedCodecs: ['av1'] });
+  assert.equal(
+    GeneralSettingsStore.open(directory).snapshot().codecPreferences.mode,
+    'force',
+  );
+});
+
+test('codec writes own queued input and snapshots and recover after failed persistence', async (t) => {
+  const { directory } = await fixture(t);
+  const file = path.join(directory, 'general-settings.json');
+  const store = GeneralSettingsStore.open(directory);
+  await fs.mkdir(file);
+  await assert.rejects(
+    store.setCodecPreferences({ mode: 'force', allowedCodecs: [] }),
+  );
+  assert.deepEqual(store.snapshot().codecPreferences, {
+    mode: 'auto',
+    allowedCodecs: ['vp9', 'av1'],
+  });
+  assert.deepEqual((await fs.readdir(directory)).sort(), [
+    'general-settings.json',
+    'user-agents.json',
+  ]);
+  await fs.rmdir(file);
+  const request = { mode: 'manual', allowedCodecs: ['vp9'] };
+  const pending = store.setCodecPreferences(request);
+  request.mode = 'force';
+  request.allowedCodecs.push('av1');
+  await pending;
+  const preferences = store.snapshot().codecPreferences;
+  assert.deepEqual(preferences, { mode: 'manual', allowedCodecs: ['vp9'] });
+  assert.ok(Object.isFrozen(preferences));
+  assert.ok(Object.isFrozen(preferences.allowedCodecs));
+  assert.throws(() => preferences.allowedCodecs.push('av1'));
+  assert.deepEqual(
+    GeneralSettingsStore.open(directory).snapshot().codecPreferences,
+    preferences,
   );
 });

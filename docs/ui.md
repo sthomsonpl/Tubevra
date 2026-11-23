@@ -2,7 +2,7 @@
 
 ## Local surfaces and blur
 
-The application shell owns the settings and loading/error screens. YouTube
+A dedicated local `WebContentsView` owns the settings and loading/error screens. YouTube
 remains a separate sandboxed `WebContentsView`. The toolbar is another local
 `WebContentsView` using the same local page at `#toolbar`, above the YouTube view.
 No Tubevra DOM, styles or Shadow DOM are inserted into YouTube.
@@ -11,7 +11,7 @@ CSS `z-index` in the application shell cannot place its DOM above a native
 sibling view. The actual toolbar therefore occupies a bounded 400 × 68 DIP
 native surface, centred 20 DIP above the content area's bottom edge. Bounds are
 updated from the root view's `bounds-changed` event, including native menu layout
-changes. There is no full-window transparent input overlay or mouse forwarding.
+changes. During playback there is no full-window transparent input overlay or mouse forwarding.
 As documented by Electron, the rounded cut-out corners still belong to the
 rectangular native hit area; all of this area stays within the toolbar footprint.
 
@@ -22,8 +22,8 @@ local CSS highlights. This blurs the real content underneath, without screenshot
 duplicated video or an opaque imitation. Application windows are not made always-on-top in production.
 
 HTML fullscreen in the YouTube view hides the native toolbar, including its hit
-area. Exiting fullscreen restores it. Opening settings hides YouTube, pins the
-dock and focuses the local shell; closing settings restores the TV view. A
+area. Exiting fullscreen restores it. Opening settings shows the local view above live YouTube, pins the
+dock and focuses the local shell; closing settings hides the local view and restores TV focus. A
 change of UA while settings are open does not steal the form's focus.
 
 The dock contains Back, Home, Fullscreen and Settings. Fullscreen toggles the native
@@ -41,7 +41,39 @@ a covering window can cause the dock to reveal underneath it, while retaining
 focus. Minimized/hidden windows and HTML playback fullscreen keep it hidden.
 Keyboard navigation keeps the dock visible only while Tubevra is active.
 
+The settings surface uses native background blur (radius 18) and translucent
+local CSS surfaces with subtle highlights. It covers the content area while
+settings are open, so pointer input cannot reach YouTube. Outside settings it is
+hidden unless a loading/error screen is needed; these retain an opaque backdrop.
+The dock stays above settings. Local settings IPC validates the dedicated view's
+WebContents, main frame and exact URL. Closing the window closes this view too.
+
 ## Settings behaviour
+
+Choose **Auto (system)**, **English**, or **Polski** under **Settings → General → Language**.
+Auto uses Polish when it is the first preferred system language and English
+otherwise. In the Polish interface, the option is labeled **Auto**. Tubevra
+applies the change immediately and keeps the current YouTube TV session open.
+It remembers your choice and checks the system language again at the next launch.
+Language detection and translations work offline.
+
+General settings place Video codecs below playback resolution. Auto/Manual/Force
+saves immediately; Settings opens AV1/VP9 checkboxes in the shared native options
+view. H.264 is always allowed by the policy. The dialog explains the selection
+and warns that disabling VP9 may limit playback above 1080p.
+
+Save commits the checkbox draft; Cancel/Escape discards it. Auto retains the list
+for Manual/Force. Failed writes keep the draft. Failed reloads retain saved values
+and offer Reload YouTube TV. Closing returns focus to Settings.
+
+Force and compatibility warnings use the yellow settings banner; application
+errors take precedence in red. Force may cause stuttering, increased CPU usage
+or playback failure.
+
+Codec and add-on options share a sandboxed native view. Background controls are
+blocked, the dock remains pinned and ratings stay hidden. IPC permits only the
+active local options document's operations; switching options creates a fresh
+document. Shared controls preserve keyboard focus and native input behaviour.
 
 - About opens the project GitHub page and Privacy Policy in the default browser.
   The policy links to `PRIVACY.md` on the repository's `main` branch. Browser
@@ -88,3 +120,36 @@ fixtures. After npm run package, run npm run test:ui and npm run test:ryd:packag
 on Windows x64. Fixtures and simulated
 cursor/input do not establish OS hit testing, physical IME, live YouTube playback
 or behaviour on macOS/Linux. These require native checks.
+
+## Shared renderer components
+
+`index.css` loads `tokens.css`, the base reset, and `components.css` before
+view layouts. Shared colours, radii, focus shadows and transition timings live
+in `tokens.css`; `.glass-active` overrides theme values. The ratings canvas reads
+the same glass tokens as the dock instead of maintaining duplicate colours.
+
+Use `.ui-select` for every dropdown, including its picker and option states.
+Use `.ui-input`, `.ui-textarea` and `.ui-label` for form fields. IDs identify
+controls for labels and behaviour; they do not define their visual appearance.
+View styles own placement and available width (for example, an inline settings
+select), while component styles own the control itself.
+
+Buttons use `.ui-button` with a colour variant (`primary`, `secondary`, `danger`
+or `danger-text`) or an explicit surface variant (`ui-button--dock`,
+`ui-button--dialog`). Dialog cancellation adds `ui-button--cancel`; the footer
+does not implicitly recolour its children. Navigation, tabs and selectable lists
+use `.ui-nav-item`, `.ui-tabs`, `.ui-tab` and `.ui-list-item`. Existing feature
+classes remain behaviour hooks. Reuse the row/toggle factories in `widgets.ts`
+and the dialog factory in `settings-dialog.ts` when building add-on controls.
+
+Cards, rows, statuses and feedback also share component rules. Keep layout and
+feature-specific icon decorations in the view stylesheet. Shared controls define
+keyboard focus and disabled/selected states; preserve native form and IME input.
+
+Shared checkboxes retain a native input beneath a decorative glass indicator.
+Translucent gradients and shared glass tokens define the control and row.
+Rows use a subtle cool-grey tint with a slightly brighter hover; green is confined
+to the checked box border and check mark. Checked state, full-row hover and
+keyboard focus have separate cues. Disabled
+options do not react to hover. Forced-colour mode reveals the native checkbox,
+and reduced-motion preferences disable checkbox transitions.

@@ -74,7 +74,13 @@ test('Adblock registration preserves existing preferences and persists explicit 
   assert.equal(item.hooks, true);
   assert.equal(item.main, false);
   assert.equal(item.page, false);
-  assert.deepEqual(hookManifest, ['adblock']);
+  assert.deepEqual(hookManifest, ['adblock', 'quality-removal']);
+  const quality = engine
+    .snapshot()
+    .items.find((item) => item.id === 'quality-removal');
+  assert.equal(quality.enabled, false);
+  assert.deepEqual(quality.modes, ['tv']);
+  assert.equal(quality.hooks, true);
   const sponsor = engine
     .snapshot()
     .items.find((item) => item.id === 'sponsorblock');
@@ -648,4 +654,191 @@ test('RYD preference updates publish state without changing authority or restart
   assert.ok(after.stateVersion > before.stateVersion);
   assert.deepEqual(after.items, before.items);
   assert.equal(after.ryd.showWithDock, false);
+});
+
+const qualityRegistry = [
+  {
+    id: 'quality-removal',
+    name: 'YouTube Quality Remover',
+    description: 'Test only',
+    modes: ['tv'],
+    defaultEnabled: false,
+    main: false,
+    page: false,
+    hooks: true,
+  },
+];
+
+test('quality removal selection persists atomically and rejects invalid values', async (t) => {
+  const dir = await directory(t);
+  const file = path.join(dir, 'extensions.json');
+  // A file written before this preference existed means an empty selection.
+  await fs.writeFile(
+    file,
+    JSON.stringify({ version: 1, enabled: { 'quality-removal': true } }),
+  );
+  const store = await ExtensionStore.open(dir, qualityRegistry);
+  assert.deepEqual(store.qualityRemovalSettings().hidden, []);
+  await Promise.all([
+    store.setQualityRemovalHidden([480, 144]),
+    store.update({ id: 'quality-removal', enabled: false }),
+  ]);
+  const reopened = await ExtensionStore.open(dir, qualityRegistry);
+  assert.deepEqual(reopened.qualityRemovalSettings().hidden, [144, 480]);
+  assert.equal(reopened.enabled('quality-removal'), false);
+  for (const invalid of [
+    [720],
+    [240, 240],
+    ['240'],
+    '240',
+    null,
+    [144, 240, 360, 480, 144],
+  ])
+    await assert.rejects(
+      store.setQualityRemovalHidden(invalid),
+      /Invalid hidden/,
+    );
+  assert.deepEqual(store.qualityRemovalSettings().hidden, [144, 480]);
+  const save = store.save;
+  store.save = async () => {
+    throw Error('write failed');
+  };
+  await assert.rejects(store.setQualityRemovalHidden([360]), /write failed/);
+  assert.deepEqual(store.qualityRemovalSettings().hidden, [144, 480]);
+  store.save = save;
+  // Re-enabling or toggling never discards the saved selection.
+  await store.update({ id: 'quality-removal', enabled: true });
+  assert.deepEqual(store.qualityRemovalSettings().hidden, [144, 480]);
+  const invalid = JSON.stringify({
+    version: 1,
+    enabled: {},
+    qualityRemoval: { hidden: [720] },
+  });
+  await fs.writeFile(file, invalid);
+  await assert.rejects(ExtensionStore.open(dir, qualityRegistry), /preserved/);
+  assert.equal(await fs.readFile(file, 'utf8'), invalid);
+});
+
+test('quality removal options reach the hook bootstrap and changes require a reload only when active', async (t) => {
+  const { EventEmitter } = require('node:events');
+  const { connectPage } = require('../src/extensions/main/page-bridge.ts');
+  const { PAGE_IPC } = require('../src/extensions/page/channels.ts');
+  const dir = await directory(t);
+  const handlers = new Map();
+  const ipc = {
+    on: (name, fn) => handlers.set(name, fn),
+    handle: (name, fn) => handlers.set(name, fn),
+    removeListener: (name) => handlers.delete(name),
+    removeHandler: (name) => handlers.delete(name),
+  };
+  const contents = Object.assign(new EventEmitter(), {
+    mainFrame: { url: 'https://www.youtube.com/tv' },
+    isDestroyed: () => false,
+    send() {},
+  });
+  let bridge;
+  const engine = await TubervaExtensions.open(
+    dir,
+    qualityRegistry,
+    source(),
+    {},
+    () => bridge?.publish(),
+    ['quality-removal'],
+  );
+  bridge = connectPage(ipc, contents, engine);
+  t.after(async () => {
+    bridge.dispose();
+    await engine.dispose();
+  });
+  const read = () => {
+    const event = { sender: contents, senderFrame: contents.mainFrame };
+    handlers.get(PAGE_IPC.bootstrap)(event);
+    assert.equal(event.returnValue.ok, true);
+    return event.returnValue.value.hooks[0];
+  };
+  assert.deepEqual(read(), {
+    id: 'quality-removal',
+    enabled: false,
+    options: [],
+  });
+  // Disabled: the choice is stored for the next document and nothing needs a reload.
+  const saved = await engine.setQualityRemoval([360, 240]);
+  assert.deepEqual(saved.qualityRemoval.hidden, [240, 360]);
+  assert.equal(saved.items[0].reloadRequired, false);
+  assert.deepEqual(read().options, [240, 360]);
+  assert.deepEqual(
+    (await engine.update({ id: 'quality-removal', enabled: true }))
+      .qualityRemoval.hidden,
+    [240, 360],
+  );
+  // Enabled and unchanged: no reload.
+  assert.equal(
+    (await engine.setQualityRemoval([240, 360])).items[0].reloadRequired,
+    false,
+  );
+  // Enabled and changed: the running hook keeps its start options until a new document.
+  const changed = await engine.setQualityRemoval([144]);
+  assert.equal(changed.items[0].reloadRequired, true);
+  assert.match(changed.items[0].reloadReason, /Quality settings changed/);
+  assert.equal(changed.revision, saved.revision + 1);
+  assert.deepEqual(read().options, [144]);
+  // Reverting to the selection the running filter started with needs no reload.
+  const reverted = await engine.setQualityRemoval([240, 360]);
+  assert.equal(reverted.items[0].reloadRequired, false);
+  assert.equal(reverted.items[0].reloadReason, null);
+  assert.equal(
+    (await engine.setQualityRemoval([144])).items[0].reloadRequired,
+    true,
+  );
+  // A different selection keeps the reload pending.
+  assert.equal(
+    (await engine.setQualityRemoval([480])).items[0].reloadRequired,
+    true,
+  );
+  assert.equal(
+    (await engine.setQualityRemoval([144])).items[0].reloadRequired,
+    true,
+  );
+  // A new document clears the flag and keeps the saved selection.
+  engine.resetPage();
+  assert.equal(engine.snapshot().items[0].reloadRequired, false);
+  assert.deepEqual(engine.snapshot().qualityRemoval.hidden, [144]);
+  await assert.rejects(engine.setQualityRemoval([720]), /Invalid hidden/);
+  assert.deepEqual(engine.snapshot().qualityRemoval.hidden, [144]);
+});
+
+test('quality removal asks for a reload only when an active filter is disabled', async (t) => {
+  const dir = await directory(t);
+  const engine = await TubervaExtensions.open(
+    dir,
+    qualityRegistry,
+    source(),
+    {},
+    () => {},
+    ['quality-removal'],
+  );
+  t.after(() => engine.dispose());
+  const item = () => engine.snapshot().items[0];
+  // Enabled but not yet confirmed by the page: disabling needs no reload.
+  await engine.update({ id: 'quality-removal', enabled: true });
+  assert.equal(item().reloadRequired, false);
+  await engine.update({ id: 'quality-removal', enabled: false });
+  assert.equal(item().reloadRequired, false);
+  await engine.update({ id: 'quality-removal', enabled: true });
+  await engine.reportHook({
+    document: 'quality-test',
+    revision: engine.snapshot().revision,
+    id: 'quality-removal',
+    instance: '1',
+    layer: 'hooks',
+    status: 'active',
+    error: null,
+    reloadReason: null,
+  });
+  assert.equal(item().layers.hooks, 'active');
+  // An active filter changes player data without asking for a reload.
+  assert.equal(item().reloadRequired, false);
+  await engine.update({ id: 'quality-removal', enabled: false });
+  assert.equal(item().reloadRequired, true);
+  assert.match(item().reloadReason, /Quality filter disabled/);
 });

@@ -6,6 +6,7 @@ import {
   hasCobaltUserAgent,
   HARDWARE_CODECS_IPC,
   type HardwareVideoProfile,
+  type CodecPreferences,
 } from '../shared/media-capabilities';
 export { hasCobaltUserAgent } from '../shared/media-capabilities';
 
@@ -30,6 +31,10 @@ export function overrideCobaltMediaCapabilities(
     channels: number;
   },
   hardwareProfiles: readonly HardwareVideoProfile[] | null = null,
+  preferences: CodecPreferences = {
+    mode: 'auto',
+    allowedCodecs: ['vp9', 'av1'],
+  },
 ) {
   for (const value of Object.values(limits))
     if (!Number.isSafeInteger(value) || value <= 0)
@@ -37,7 +42,10 @@ export function overrideCobaltMediaCapabilities(
   const marker = Symbol.for('tubevra.cobaltMediaCapabilities');
   const original = MediaSource.isTypeSupported;
   if (Reflect.get(MediaSource, marker) === original) return;
-  const hardware = hardwareProfiles === null ? null : new Set(hardwareProfiles);
+  const hardware =
+    hardwareProfiles === null || preferences.mode === 'force'
+      ? null
+      : new Set(hardwareProfiles);
   let warning: string | null = null;
   const unknownProfile = () => {
     warning ??=
@@ -150,6 +158,7 @@ export function overrideCobaltMediaCapabilities(
       let modified = false;
       let codecs: string | undefined;
       let codecFields = 0;
+      let forceParameters = true;
       for (const piece of pieces.slice(1)) {
         const match = /^\s*([^=\s]+)\s*=\s*(.*?)\s*$/.exec(piece);
         const key = (match?.[1] ?? piece.trim()).toLowerCase();
@@ -162,6 +171,8 @@ export function overrideCobaltMediaCapabilities(
               : raw;
         }
         if (!owned.has(key)) {
+          if (key !== 'codecs' || !match || !/^"[^"\\]+"$/.test(match[2]))
+            forceParameters = false;
           kept.push(piece);
           continue;
         }
@@ -179,8 +190,7 @@ export function overrideCobaltMediaCapabilities(
         modified ? kept.join(';') : type,
       ]);
       if (
-        !supported ||
-        !hardware ||
+        (preferences.mode === 'auto' && (!supported || !hardware)) ||
         !/^\s*video\//i.test(pieces[0]) ||
         !codecFields
       )
@@ -189,15 +199,68 @@ export function overrideCobaltMediaCapabilities(
         unknownProfile();
         return supported;
       }
-      for (const codec of codecs.split(',').map((value) => value.trim())) {
+      const codecList = codecs.split(',').map((value) => value.trim());
+      let forceCodec = false;
+      for (const codec of codecList) {
+        const family = /^(?:vp9|vp09)(?:\.|$)/i.test(codec)
+          ? 'vp9'
+          : /^av01(?:\.|$)/i.test(codec)
+            ? 'av1'
+            : null;
+        if (
+          preferences.mode !== 'auto' &&
+          family &&
+          !preferences.allowedCodecs.includes(family)
+        )
+          return false;
         if (!/^(?:vp9|vp09|av01|avc1|avc3)(?:\.|$)/i.test(codec)) continue;
         const profile = profileFor(codec);
         if (!profile) {
           unknownProfile();
           continue;
         }
-        if (!hardware.has(profile as HardwareVideoProfile)) return false;
+        if (hardware && !hardware.has(profile as HardwareVideoProfile))
+          return false;
+        if (preferences.mode === 'force' && family) {
+          // Deliberately narrow override: mandatory codec fields only. Extended
+          // colour strings and mixed codec lists retain native validation.
+          // https://www.webmproject.org/vp9/mp4/#codecs-parameter-string
+          // https://aomediacodec.github.io/av1-isobmff/#codecsparam
+          const vp =
+            /^vp09\.0([0-3])\.(10|11|20|21|30|31|40|41|50|51|52|60|61|62)\.(08|10|12)$/.exec(
+              codec,
+            );
+          const av = /^av01\.([012])\.(\d{2})([MH])\.(08|10|12)$/.exec(codec);
+          forceCodec =
+            codec === 'vp9' ||
+            codec === 'vp9.0' ||
+            !!(vp && (Number(vp[1]) < 2 ? vp[3] === '08' : vp[3] !== '08')) ||
+            !!(
+              av &&
+              Number(av[2]) <= 23 &&
+              (av[3] === 'M' || Number(av[2]) >= 8) &&
+              (av[1] === '2' || av[4] !== '12')
+            );
+        }
       }
+      if (
+        !supported &&
+        preferences.mode === 'force' &&
+        forceCodec &&
+        forceParameters &&
+        codecList.length === 1
+      ) {
+        const mime = pieces[0].trim().toLowerCase();
+        // Check the container through Chromium with a baseline codec. This
+        // bypasses only the selected codec verdict, never arbitrary MIME types.
+        if (mime === 'video/mp4' || mime === 'video/webm')
+          return Reflect.apply(target, receiver, [
+            `${mime};codecs="${mime === 'video/mp4' ? 'avc1.42E01E' : 'vp8'}"`,
+          ]);
+      }
+      if (!supported && preferences.mode === 'force')
+        warning ??=
+          'Codec query outside the supported Force scope; native codec support is used for that query.';
       return supported;
     },
   });
@@ -233,12 +296,15 @@ export function installCobaltMediaCapabilities() {
     func: overrideCobaltMediaCapabilities,
     args: [
       cobaltMediaLimits(display),
-      snapshot?.status === 'ready' ? snapshot.profiles : null,
+      snapshot?.hardware?.status === 'ready'
+        ? snapshot.hardware.profiles
+        : null,
+      snapshot?.preferences,
     ],
   });
   // Unknown native-supported profile strings retain native behavior, with one
   // diagnostic. Follow the existing player-display diagnostic control pattern.
-  if (snapshot?.status === 'ready' && control) {
+  if (snapshot && control) {
     const timer = setInterval(() => {
       try {
         const message = control.takeWarning();

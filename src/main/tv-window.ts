@@ -20,21 +20,35 @@ import {
   PRIVACY_POLICY_URL,
   SPONSORBLOCK_URL,
   RYD_URL,
+  SETTINGS_SECTIONS,
 } from '../shared/api';
-import type { AppState, Result } from '../shared/api';
+import type {
+  AppState,
+  CodecWarning,
+  Result,
+  SettingsSection,
+} from '../shared/api';
 import type { UserAgentStore } from './user-agent-store';
 import { GeneralSettingsStore } from './general-settings-store';
+import { detectSystemLanguage } from './system-language';
 import { resolveTVDisplay, selectTVDisplay } from './tv-display';
 import { connectTVDisplay } from './tv-display-bridge';
 import { createHardwareCodecDetector } from './media-capabilities';
 import { connectHardwareCodecs } from './media-capabilities-bridge';
-import { hasCobaltUserAgent } from '../shared/media-capabilities';
+import {
+  hasCobaltUserAgent,
+  type CodecBootstrapSnapshot,
+  type CodecPreferences,
+} from '../shared/media-capabilities';
 import { createToolbarAutoHide } from './toolbar-auto-hide';
 import { connectOverlayAnimation } from './overlay-animation';
 import { TOOLBAR_STYLE } from './toolbar-style';
 import { createRatingsPanel } from './ratings-panel';
+import { createExtensionSettingsView } from './extension-settings-view';
 
 const TV_HOME = 'https://www.youtube.com/tv';
+// The local settings view can be recreated while the app is still running.
+let settingsSection: SettingsSection = 'general';
 
 function isTVURL(value: string) {
   try {
@@ -50,7 +64,10 @@ function isTVURL(value: string) {
 
 export async function createTVWindow(
   store: UserAgentStore,
-  general = GeneralSettingsStore.open(app.getPath('userData')),
+  general = GeneralSettingsStore.open(
+    app.getPath('userData'),
+    detectSystemLanguage(),
+  ),
 ) {
   const display = selectTVDisplay(
     screen.getAllDisplays(),
@@ -66,9 +83,9 @@ export async function createTVWindow(
     height: 800,
     minWidth: 640,
     minHeight: 540,
+    backgroundColor: '#08090b',
     icon: path.join(app.getAppPath(), 'assets', 'icon', 'icon.ico'),
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
@@ -116,9 +133,30 @@ export async function createTVWindow(
     },
   });
   const contents = youtube.webContents;
+  const currentTVURL = () => {
+    if (contents.isDestroyed())
+      throw new Error('YouTube view closed. Restart Tubevra to reopen it.');
+    return contents.getURL();
+  };
   youtube.setVisible(false);
   contents.setUserAgent(store.activeUserAgent());
   mainWindow.contentView.addChildView(youtube);
+  // A native sibling surface blurs live YouTube without remote DOM changes.
+  const local = new WebContentsView({
+    webPreferences: {
+      // Keep the local surface painting when returning from its hidden state.
+      backgroundThrottling: false,
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
+    },
+  });
+  local.setBackgroundColor('#2412161d');
+  local.setBackgroundBlur(18);
+  mainWindow.contentView.addChildView(local);
   // Local DOM z-index cannot rise above a sibling native view. Keep the local
   // overlay in its own small surface so the rest of YouTube receives input.
   const toolbarURL = `${shellURL}#toolbar`;
@@ -143,12 +181,40 @@ export async function createTVWindow(
     shellURL + '#ratings',
     extensions,
     () => updateRatings(),
+    () => general.snapshot().language,
+  );
+  const extensionSettings = createExtensionSettingsView(
+    mainWindow,
+    local.webContents,
+    shellURL,
+    {
+      canOpen: () => settingsOpen && !playbackFullscreen,
+      getLanguage: () => general.snapshot().language,
+      getPreference: () => extensions.snapshot().ryd.showWithDock,
+      savePreference: (value) => extensions.setRydShowWithDock(value),
+      getCodecs: () => ({
+        preferences: general.snapshot().codecPreferences,
+        reloadRequired: codecReloadRequired(),
+        error,
+      }),
+      saveCodecs: (value) =>
+        queueCodecChange(() => applyCodecPreferences(value)),
+      reloadCodecs: () =>
+        queueCodecChange(async () => {
+          const url = currentTVURL();
+          await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
+        }),
+      getQuality: () => extensions.snapshot().qualityRemoval.hidden,
+      saveQuality: (hidden) => extensions.setQualityRemoval(hidden),
+      onVisibility: () => overlays.refresh(),
+    },
   );
   for (const surface of [
-    mainWindow.webContents,
+    local.webContents,
     contents,
     toolbar.webContents,
     ratings.view.webContents,
+    extensionSettings.view.webContents,
   ]) {
     surface.on('before-input-event', (event, input) => {
       if (
@@ -173,8 +239,10 @@ export async function createTVWindow(
     mainWindow,
     toolbar,
     () => {
-      if (settingsOpen || error || loading) mainWindow.webContents.focus();
-      else contents.focus();
+      if (extensionSettings.isOpen())
+        extensionSettings.view.webContents.focus();
+      else if (settingsOpen || error || loading) local.webContents.focus();
+      else if (!contents.isDestroyed()) contents.focus();
     },
     () => refreshOverlays(),
   );
@@ -222,6 +290,8 @@ export async function createTVWindow(
   const resize = () => {
     const { width, height } = mainWindow.contentView.getBounds();
     youtube.setBounds({ x: 0, y: 0, width, height });
+    local.setBounds({ x: 0, y: 0, width, height });
+    extensionSettings.layout();
     dock.layout();
     ratings.layout(toolbar.getBounds());
     overlays.layout();
@@ -233,7 +303,22 @@ export async function createTVWindow(
   mainWindow.contentView.on('bounds-changed', resize);
 
   let error: string | null = null;
-  let codecWarning: string | null = null;
+  let codecWarning: CodecWarning | null = null;
+  // Policy used by the last successful load; the allowed list matters only
+  // outside Auto.
+  let appliedCodecPolicy: CodecPreferences | undefined;
+  const sameCodecPolicy = (a: CodecPreferences, b: CodecPreferences) =>
+    a.mode === b.mode &&
+    (a.mode === 'auto' ||
+      (a.allowedCodecs.length === b.allowedCodecs.length &&
+        a.allowedCodecs.every((codec) => b.allowedCodecs.includes(codec))));
+  function codecReloadRequired() {
+    return (
+      !!appliedCodecPolicy &&
+      hasCobaltUserAgent(store.activeUserAgent()) &&
+      !sameCodecPolicy(appliedCodecPolicy, general.snapshot().codecPreferences)
+    );
+  }
   let playbackFullscreen = false;
   let settingsOpen = false;
   let loading = true;
@@ -251,7 +336,13 @@ export async function createTVWindow(
     overlays.refresh();
   };
   ratings.view.webContents.on('focus', () => {
-    if (mainWindow.isFocused() && !settingsOpen && !loading && !error)
+    if (
+      mainWindow.isFocused() &&
+      !settingsOpen &&
+      !loading &&
+      !error &&
+      !contents.isDestroyed()
+    )
       contents.focus();
   });
   ratings.view.webContents.on('before-mouse-event', (event, input) => {
@@ -275,13 +366,15 @@ export async function createTVWindow(
     playbackFullscreen,
     windowFullscreen: mainWindow.isFullScreen(),
     settingsOpen,
+    settingsSection,
     loading,
     error,
     codecWarning,
+    codecReloadRequired: codecReloadRequired(),
   });
   const publish = () => {
     if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(IPC.stateChanged, state());
+      local.webContents.send(IPC.stateChanged, state());
       if (!toolbar.webContents.isDestroyed())
         toolbar.webContents.send(IPC.stateChanged, state());
     }
@@ -289,7 +382,9 @@ export async function createTVWindow(
   const syncVisibility = () => {
     // Extension errors are separate from YouTube load errors.
     if (mainWindow.isDestroyed()) return;
-    youtube.setVisible(!settingsOpen && !error && !loading);
+    if (!contents.isDestroyed()) youtube.setVisible(!error && !loading);
+    local.setVisible(settingsOpen || !!error || loading);
+    if (!settingsOpen) extensionSettings.close(true);
     updateRatings();
     dock.setPinned(settingsOpen || !!error || loading);
     overlays.setSuppressed(playbackFullscreen);
@@ -300,10 +395,7 @@ export async function createTVWindow(
     updateRatings();
     publish();
     if (!mainWindow.isDestroyed())
-      mainWindow.webContents.send(
-        IPC.extensionsStateChanged,
-        extensions.snapshot(),
-      );
+      local.webContents.send(IPC.extensionsStateChanged, extensions.snapshot());
     pageBridge.publish();
   };
   const reportError = (message: string) => {
@@ -365,22 +457,36 @@ export async function createTVWindow(
     reportError,
   );
   const codecDetector = createHardwareCodecDetector();
-  const warnCodecs = (message: string) => {
-    codecWarning = message;
+  const warnCodecs = (warning: CodecWarning) => {
+    codecWarning = warning;
     publish();
   };
-  const codecBridge = connectHardwareCodecs(ipcMain, contents, warnCodecs);
+  const codecBridge = connectHardwareCodecs(ipcMain, contents, (detail) =>
+    warnCodecs({ reason: 'playerReported', detail }),
+  );
+  let codecBootstrap: CodecBootstrapSnapshot | undefined;
+  let loadRevision = 0;
+  let gpuRevision = 0;
   const onChildProcessGone = (
     _event: Electron.Event,
     details: Electron.Details,
   ) => {
     if (details.type !== 'GPU') return;
     codecDetector.invalidate();
-    if (hasCobaltUserAgent(store.activeUserAgent())) {
+    gpuRevision++;
+    if (
+      codecBootstrap &&
+      codecBootstrap.preferences.mode !== 'force' &&
+      hasCobaltUserAgent(store.activeUserAgent())
+    ) {
       const message =
         'Hardware codec filtering unavailable: GPU process stopped. Reload YouTube to retry.';
-      codecBridge.update({ status: 'error', error: message });
-      warnCodecs(message);
+      codecBootstrap = {
+        preferences: codecBootstrap.preferences,
+        hardware: { status: 'error', error: message },
+      };
+      codecBridge.update(codecBootstrap);
+      warnCodecs({ reason: 'gpuStopped' });
     }
   };
   app.on('child-process-gone', onChildProcessGone);
@@ -388,7 +494,7 @@ export async function createTVWindow(
   function assertShell(event: IpcMainInvokeEvent) {
     const sender = event.sender;
     const expectedURL =
-      sender === mainWindow.webContents
+      sender === local.webContents
         ? shellURL
         : sender === toolbar.webContents
           ? toolbarURL
@@ -404,6 +510,9 @@ export async function createTVWindow(
   }
 
   const loadTV = async (url: string, reload = false) => {
+    const revision = ++loadRevision;
+    if (contents.isDestroyed())
+      throw new Error('YouTube view closed. Restart Tubevra to reopen it.');
     error = null;
     loading = true;
     syncVisibility();
@@ -411,13 +520,41 @@ export async function createTVWindow(
     try {
       codecWarning = null;
       codecBridge.update(undefined);
+      codecBootstrap = undefined;
       if (hasCobaltUserAgent(store.activeUserAgent())) {
-        const codecs = await codecDetector.detect();
-        if (mainWindow.isDestroyed() || contents.isDestroyed()) return;
-        codecBridge.update(codecs);
-        if (codecs.status === 'error')
+        const preferences = general.snapshot().codecPreferences;
+        const gpu = gpuRevision;
+        const hardware =
+          preferences.mode === 'force' ? null : await codecDetector.detect();
+        if (
+          revision !== loadRevision ||
+          mainWindow.isDestroyed() ||
+          contents.isDestroyed()
+        )
+          return;
+        codecBootstrap =
+          preferences.mode === 'force'
+            ? { preferences: { ...preferences, mode: 'force' }, hardware: null }
+            : {
+                preferences: { ...preferences, mode: preferences.mode },
+                hardware:
+                  gpu === gpuRevision
+                    ? hardware!
+                    : {
+                        status: 'error',
+                        error:
+                          'GPU process stopped during codec detection. Reload YouTube to retry.',
+                      },
+              };
+        codecBridge.update(codecBootstrap);
+        if (codecBootstrap.hardware?.status === 'error')
           warnCodecs(
-            `Hardware codec filtering unavailable: ${codecs.error} Native codec support will be used.`,
+            gpu === gpuRevision
+              ? {
+                  reason: 'detectionFailed',
+                  detail: codecBootstrap.hardware.error,
+                }
+              : { reason: 'gpuStopped' },
           );
       }
       if (mainWindow.isDestroyed() || contents.isDestroyed()) return;
@@ -459,12 +596,15 @@ export async function createTVWindow(
         await contents.loadURL(url, { userAgent: store.activeUserAgent() });
       }
       if (error) throw new Error(error);
+      if (revision !== loadRevision) return;
       if (mainWindow.isDestroyed()) return;
       loading = false;
+      appliedCodecPolicy = codecBootstrap?.preferences;
       syncVisibility();
       if (!settingsOpen) contents.focus();
       publish();
     } catch (cause) {
+      if (revision !== loadRevision) return;
       const message =
         cause instanceof Error ? cause.message : 'YouTube failed to load.';
       reportError(message);
@@ -478,9 +618,10 @@ export async function createTVWindow(
   const handle = (
     channel: string,
     action: (...args: unknown[]) => Promise<void> | void,
+    authorize = assertShell,
   ) => {
     ipcMain.handle(channel, (event, ...args): Promise<Result<AppState>> => {
-      assertShell(event);
+      authorize(event);
       const operation = pending.then(async (): Promise<Result<AppState>> => {
         try {
           if (mainWindow.isDestroyed())
@@ -619,6 +760,20 @@ export async function createTVWindow(
       };
     }
   });
+  handle(
+    IPC.setLanguage,
+    async (...args) => {
+      if (args.length !== 1) throw new Error('Expected one language.');
+      await general.setLanguage(args[0]);
+      publish();
+      ratings.publishLanguage();
+    },
+    (event) => {
+      assertShell(event);
+      if (event.sender !== local.webContents)
+        throw new Error('Untrusted language settings sender.');
+    },
+  );
   handle(IPC.setPlaybackResolution, async (...args) => {
     if (args.length !== 1) throw new Error('Expected one playback resolution.');
     const previous = general.snapshot().playbackResolution;
@@ -627,8 +782,35 @@ export async function createTVWindow(
     publish();
     if (resolution === previous) return;
     displayBridge.update(resolveTVDisplay(display, resolution));
-    const url = contents.getURL();
+    const url = currentTVURL();
     await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
+  });
+  async function applyCodecPreferences(value: unknown) {
+    const previous = general.snapshot().codecPreferences;
+    await general.setCodecPreferences(value);
+    const next = general.snapshot().codecPreferences;
+    const changed = !sameCodecPolicy(previous, next);
+    publish();
+    if (!changed || !hasCobaltUserAgent(store.activeUserAgent())) return;
+    const url = currentTVURL();
+    await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
+  }
+  function queueCodecChange(action: () => Promise<void>) {
+    const operation = pending.then(async () => {
+      if (mainWindow.isDestroyed()) throw Error('The window was closed.');
+      await action();
+      return {
+        preferences: general.snapshot().codecPreferences,
+        reloadRequired: codecReloadRequired(),
+        error,
+      };
+    });
+    pending = operation.catch(() => {});
+    return operation;
+  }
+  handle(IPC.setCodecPreferences, async (...args) => {
+    if (args.length !== 1) throw Error('Expected one codec preference object.');
+    await applyCodecPreferences(args[0]);
   });
   handle(IPC.setHardwareAcceleration, async (...args) => {
     if (args.length !== 1)
@@ -645,7 +827,7 @@ export async function createTVWindow(
   });
   handle(IPC.reloadTV, async (...args) => {
     if (args.length) throw new Error('Unexpected arguments.');
-    const url = contents.getURL();
+    const url = currentTVURL();
     await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
   });
   ipcMain.handle(IPC.setSettingsOpen, (event, ...args): Result<AppState> => {
@@ -660,9 +842,19 @@ export async function createTVWindow(
     settingsOpen = args[0];
     syncVisibility();
     publish();
-    if (settingsOpen || error) mainWindow.webContents.focus();
-    else contents.focus();
+    if (settingsOpen || error) local.webContents.focus();
+    else if (!contents.isDestroyed()) contents.focus();
     return { ok: true, value: state() };
+  });
+  ipcMain.handle(IPC.setSettingsSection, (event, ...args): Result<null> => {
+    assertShell(event);
+    if (event.sender !== local.webContents)
+      throw new Error('Untrusted settings section sender.');
+    const section = SETTINGS_SECTIONS.find((section) => section === args[0]);
+    if (args.length !== 1 || !section)
+      return { ok: false, error: 'Expected one settings section.' };
+    settingsSection = section;
+    return { ok: true, value: null };
   });
   handle(IPC.updateUserAgents, async (...args) => {
     if (args.length !== 1)
@@ -672,11 +864,17 @@ export async function createTVWindow(
     await store.update(args[0]);
     publish();
     const current = store.activeUserAgent();
-    if (current !== previous || store.snapshot().activeId !== previousId) {
+    if (
+      (current !== previous || store.snapshot().activeId !== previousId) &&
+      // Saving does not depend on the view; a destroyed view picks up the
+      // saved User-Agent when it is created again.
+      !contents.isDestroyed()
+    ) {
       contents.setUserAgent(current);
       // Explicit UA for the current Leanback route; preserve cookies/session.
       try {
-        await loadTV(isTVURL(contents.getURL()) ? contents.getURL() : TV_HOME);
+        const url = currentTVURL();
+        await loadTV(isTVURL(url) ? url : TV_HOME);
       } catch {
         // The configuration is committed. loadTV publishes the load error;
         // return the saved state so the editor can finish this mutation.
@@ -689,7 +887,7 @@ export async function createTVWindow(
     }
     if (args[0] === 'home') await loadTV(TV_HOME);
     else {
-      if (!isTVURL(contents.getURL()) || error)
+      if (!isTVURL(currentTVURL()) || error)
         throw new Error('Leanback is not available.');
       contents.send(IPC.requestTVBack);
     }
@@ -698,6 +896,7 @@ export async function createTVWindow(
   const dispatchBack = (event: IpcMainEvent, ...args: unknown[]) => {
     if (
       args.length ||
+      contents.isDestroyed() ||
       event.sender !== contents ||
       event.senderFrame !== contents.mainFrame ||
       !isTVURL(event.senderFrame.url) ||
@@ -733,6 +932,10 @@ export async function createTVWindow(
   contents.on('render-process-gone', (_event, details) => {
     reportError(`YouTube renderer stopped: ${details.reason}`);
   });
+  contents.on('destroyed', () => {
+    if (!mainWindow.isDestroyed())
+      reportError('YouTube view closed. Restart Tubevra to reopen it.');
+  });
   contents.on('preload-error', (_event, _preloadPath, cause) => {
     reportError(`YouTube preload failed: ${cause.message}`);
   });
@@ -754,23 +957,25 @@ export async function createTVWindow(
     );
     return { action: 'deny' };
   });
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  local.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   toolbar.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   toolbar.webContents.on('will-navigate', (event, url) => {
     if (url !== toolbarURL) event.preventDefault();
   });
-  mainWindow.webContents.on('will-navigate', (event, url) => {
+  local.webContents.on('will-navigate', (event, url) => {
     if (url !== shellURL) event.preventDefault();
   });
-  mainWindow.webContents.session.setPermissionRequestHandler(
+  local.webContents.session.setPermissionRequestHandler(
     (_contents, _permission, callback) => callback(false),
   );
-  mainWindow.webContents.session.setPermissionCheckHandler(() => false);
+  local.webContents.session.setPermissionCheckHandler(() => false);
 
   mainWindow.on('closed', () => {
+    loadRevision++;
     overlays.dispose();
     dock.dispose();
     ratings.dispose();
+    extensionSettings.dispose();
     displayBridge.dispose();
     codecBridge.dispose();
     codecDetector.dispose();
@@ -781,9 +986,11 @@ export async function createTVWindow(
       .catch((cause) => console.error('Extension shutdown failed:', cause));
     for (const channel of [
       IPC.getState,
+      IPC.setLanguage,
       IPC.toggleFullscreen,
       IPC.setHardwareAcceleration,
       IPC.setPlaybackResolution,
+      IPC.setCodecPreferences,
       IPC.restartApp,
       IPC.openProjectGitHub,
       IPC.openPrivacyPolicy,
@@ -796,15 +1003,17 @@ export async function createTVWindow(
       IPC.updateUserAgents,
       IPC.navigate,
       IPC.setSettingsOpen,
+      IPC.setSettingsSection,
     ])
       ipcMain.removeHandler(channel);
     ipcMain.removeListener(IPC.dispatchTVBack, dispatchBack);
     // Closing the parent does not automatically close a child WebContentsView.
+    if (!local.webContents.isDestroyed()) local.webContents.close();
     if (!contents.isDestroyed()) contents.close();
     if (!toolbar.webContents.isDestroyed()) toolbar.webContents.close();
   });
   await Promise.all([
-    mainWindow.loadURL(shellURL),
+    local.webContents.loadURL(shellURL),
     ratings.load(),
     toolbar.webContents.loadURL(toolbarURL),
   ]);

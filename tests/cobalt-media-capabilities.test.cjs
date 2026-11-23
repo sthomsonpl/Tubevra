@@ -39,22 +39,27 @@ function fixture(
   display = { width: 1920, height: 1080 },
   hdr = false,
   hardwareProfiles = null,
+  preferences = shared.DEFAULT_CODEC_PREFERENCES,
+  nativeCheck = null,
 ) {
   const calls = [];
   const native = function (type) {
     calls.push(type);
     if (type === 'throw') throw Error('native failure');
-    return !String(type).includes('nonexistent');
+    return nativeCheck
+      ? nativeCheck(type)
+      : !String(type).includes('nonexistent');
   };
   const context = {
     MediaSource: { isTypeSupported: native },
     window: { matchMedia: () => ({ matches: hdr }) },
     limits: cobaltMediaLimits(display),
     hardwareProfiles,
+    preferences,
   };
   vm.createContext(context);
   const control = vm.runInContext(
-    `(${overrideCobaltMediaCapabilities.toString()})(limits, hardwareProfiles)`,
+    `(${overrideCobaltMediaCapabilities.toString()})(limits, hardwareProfiles, preferences)`,
     context,
   );
   return {
@@ -65,6 +70,95 @@ function fixture(
   };
 }
 const vp9 = 'video/webm; codecs="vp9"';
+
+test('manual selection filters families independently of detection, preserving H264 and native rejection', () => {
+  for (const hardware of [null, [], ['av1 profile main', 'h264 high']]) {
+    for (const allowedCodecs of [[], ['vp9'], ['av1'], ['vp9', 'av1']]) {
+      const f = fixture(undefined, false, hardware, {
+        mode: 'manual',
+        allowedCodecs,
+      });
+      assert.equal(
+        f.check(vp9),
+        allowedCodecs.includes('vp9') && hardware === null,
+      );
+      assert.equal(
+        f.check('video/mp4;codecs="av01.0.13M.08"'),
+        allowedCodecs.includes('av1') &&
+          (hardware === null || hardware.includes('av1 profile main')),
+      );
+      assert.equal(
+        f.check('video/mp4;codecs="avc1.640028"'),
+        hardware === null || hardware.includes('h264 high'),
+      );
+      assert.equal(f.check('audio/webm;codecs="opus"'), true);
+      assert.equal(
+        f.check('video/webm;codecs="vp09.09.10.08"'),
+        allowedCodecs.includes('vp9'),
+      );
+    }
+  }
+  const f = fixture(
+    undefined,
+    false,
+    null,
+    { mode: 'manual', allowedCodecs: ['av1'] },
+    () => false,
+  );
+  assert.equal(f.check('video/mp4;codecs="av01.0.13M.08"'), false);
+});
+
+test('force bypasses selected codec rejection only within its validated scope', () => {
+  const native = (type) => /codecs="(?:avc1\.42E01E|vp8)"$/.test(type);
+  const f = fixture(
+    undefined,
+    false,
+    [],
+    { mode: 'force', allowedCodecs: ['vp9', 'av1'] },
+    native,
+  );
+  for (const query of [
+    vp9,
+    'video/mp4;codecs="vp09.02.51.10";width=640',
+    'video/mp4;codecs="av01.0.13M.08";framerate=60',
+  ])
+    assert.equal(f.check(query), true, query);
+  for (const query of [
+    'video/unknown;codecs="av01.0.13M.08"',
+    'audio/mp4;codecs="av01.0.13M.08"',
+    'video/mp4;codecs="av01.0.13M.08";unknown=1',
+    'video/mp4;codecs="av01.0.13M.08";width=99999',
+    'video/mp4;codecs="av01.0.13M.08";framerate=61',
+    'video/mp4;codecs="av01.0.13M.08";eotf=smpte2084',
+    'video/mp4;codecs="av01.0.13M.08";width=640;width=640',
+    'video/mp4;codecs="av01.0.13M.08";codecs="av01.0.13M.08"',
+    'video/mp4;codecs="av01.0.13M.08,mp4a.40.2"',
+    'video/mp4;codecs="av01.0.13M.08,nonexistent"',
+    'video/mp4;codecs="av01.0.99M.08"',
+    'video/mp4;codecs="av01.0.13M.12"',
+    'video/mp4;codecs="av01.0.01H.08"',
+    'video/mp4;codecs="vp09.00.51.10"',
+    'video/mp4;codecs="vp09.02.99.10"',
+    'video/mp4;codecs="av01.0.13M.08.0.110.01.01.01.0"',
+    'video/mp4;codecs="avc1.640028"',
+  ])
+    assert.equal(f.check(query), false, query);
+  assert.match(f.control.takeWarning(), /Force scope/);
+  const blocked = fixture(undefined, false, null, {
+    mode: 'force',
+    allowedCodecs: [],
+  });
+  assert.equal(blocked.check(vp9), false);
+  assert.equal(blocked.check('video/mp4;codecs="avc1.640028"'), true);
+  const noContainer = fixture(
+    undefined,
+    false,
+    null,
+    { mode: 'force', allowedCodecs: ['av1'] },
+    () => false,
+  );
+  assert.equal(noContainer.check('video/mp4;codecs="av01.0.13M.08"'), false);
+});
 test('installation guards run before bootstrap and propagate installation errors', () => {
   for (const [main, url, ua, expected] of [
     [true, 'https://www.youtube.com/tv', 'Cobalt/26', 1],
@@ -359,7 +453,12 @@ test('installer passes only ready profiles and reports unknown-profile warnings 
         if (name === '../shared/tv-display')
           return { isTVDisplayURL: () => true };
         if (name === './media-capabilities')
-          return { bootstrapHardwareCodecs: () => snapshot };
+          return {
+            bootstrapHardwareCodecs: () => ({
+              preferences: shared.DEFAULT_CODEC_PREFERENCES,
+              hardware: snapshot,
+            }),
+          };
         if (name === './tv-display')
           return { bootstrapTVDisplay: () => ({ width: 1920, height: 1080 }) };
         if (name === 'electron')
@@ -379,12 +478,12 @@ test('installer passes only ready profiles and reports unknown-profile warnings 
       args[1],
       snapshot.status === 'ready' ? snapshot.profiles : null,
     );
-    if (snapshot.status === 'ready') {
+    {
       tick();
       assert.equal(messages[0][0], shared.HARDWARE_CODECS_IPC.failure);
       pagehide();
       assert.equal(cleared, 2);
-    } else assert.equal(tick, undefined);
+    }
   }
 });
 

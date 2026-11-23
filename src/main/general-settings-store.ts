@@ -3,12 +3,27 @@ import { readFileSync } from 'node:fs';
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { GeneralSettingsState } from '../shared/api';
+import {
+  DEFAULT_LANGUAGE,
+  DEFAULT_LANGUAGE_PREFERENCE,
+  isLanguagePreference,
+  type Language,
+  type LanguagePreference,
+} from '../shared/i18n/language';
+import {
+  DEFAULT_CODEC_PREFERENCES,
+  freezeCodecPreferences,
+  isCodecPreferences,
+  type CodecPreferences,
+} from '../shared/media-capabilities';
 
 import {
   isPlaybackResolution,
   type PlaybackResolution,
 } from '../shared/tv-display';
 interface Settings {
+  language: LanguagePreference;
+  codecPreferences: CodecPreferences;
   playbackResolution: PlaybackResolution;
   version: 1;
   hardwareAcceleration: boolean;
@@ -21,14 +36,17 @@ export class GeneralSettingsStore {
   private constructor(
     private readonly file: string,
     private settings: Settings,
+    private readonly systemLanguage: Language,
   ) {
     this.startupHardwareAcceleration = settings.hardwareAcceleration;
   }
 
   // Electron needs this preference synchronously, before the ready event.
-  static open(userData: string) {
+  static open(userData: string, systemLanguage: Language = DEFAULT_LANGUAGE) {
     const file = path.join(userData, 'general-settings.json');
     let settings: Settings = {
+      language: DEFAULT_LANGUAGE_PREFERENCE,
+      codecPreferences: DEFAULT_CODEC_PREFERENCES,
       version: 1,
       hardwareAcceleration: true,
       playbackResolution: 'auto',
@@ -46,17 +64,30 @@ export class GeneralSettingsStore {
         value.version !== 1 ||
         !('hardwareAcceleration' in value) ||
         typeof value.hardwareAcceleration !== 'boolean' ||
+        ('language' in value && !isLanguagePreference(value.language)) ||
         ('playbackResolution' in value &&
           !isPlaybackResolution(value.playbackResolution)) ||
+        ('codecPreferences' in value &&
+          !isCodecPreferences(value.codecPreferences)) ||
         Object.keys(value).some(
           (key) =>
             key !== 'version' &&
             key !== 'hardwareAcceleration' &&
+            key !== 'codecPreferences' &&
+            key !== 'language' &&
             key !== 'playbackResolution',
         )
       )
         throw new Error('Unsupported or invalid general configuration.');
       settings = {
+        language:
+          'language' in value
+            ? (value.language as LanguagePreference)
+            : DEFAULT_LANGUAGE_PREFERENCE,
+        codecPreferences:
+          'codecPreferences' in value
+            ? freezeCodecPreferences(value.codecPreferences)
+            : DEFAULT_CODEC_PREFERENCES,
         version: 1,
         playbackResolution:
           'playbackResolution' in value
@@ -71,16 +102,29 @@ export class GeneralSettingsStore {
           { cause: error },
         );
     }
-    return new GeneralSettingsStore(file, settings);
+    return new GeneralSettingsStore(file, settings, systemLanguage);
   }
 
   snapshot(): GeneralSettingsState {
     return {
+      language:
+        this.settings.language === 'auto'
+          ? this.systemLanguage
+          : this.settings.language,
+      languagePreference: this.settings.language,
+      codecPreferences: this.settings.codecPreferences,
       playbackResolution: this.settings.playbackResolution,
       hardwareAcceleration: this.settings.hardwareAcceleration,
       restartRequired:
         this.settings.hardwareAcceleration !== this.startupHardwareAcceleration,
     };
+  }
+
+  setLanguage(language: unknown): Promise<GeneralSettingsState> {
+    return this.update(() => {
+      if (!isLanguagePreference(language)) throw new Error('Invalid language.');
+      return { ...this.settings, language };
+    });
   }
 
   setHardwareAcceleration(enabled: unknown): Promise<GeneralSettingsState> {
@@ -89,6 +133,19 @@ export class GeneralSettingsStore {
         throw new Error('Expected a hardware acceleration flag.');
       return { ...this.settings, hardwareAcceleration: enabled };
     });
+  }
+  setCodecPreferences(value: unknown): Promise<GeneralSettingsState> {
+    // Own the validated request before it waits for other configuration writes.
+    let preferences: CodecPreferences;
+    try {
+      preferences = freezeCodecPreferences(value);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    return this.update(() => ({
+      ...this.settings,
+      codecPreferences: preferences,
+    }));
   }
   setPlaybackResolution(value: unknown): Promise<GeneralSettingsState> {
     return this.update(() => {

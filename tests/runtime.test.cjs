@@ -250,6 +250,7 @@ test('bridge watchdog reports missing confirmation and bounds diagnostic ingress
         },
       ],
     }),
+    hookOptions: () => undefined,
     reportHook: (report) => {
       reports.push(report);
       count++;

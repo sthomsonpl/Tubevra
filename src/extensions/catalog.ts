@@ -2,9 +2,11 @@ import type { ExtensionModule } from './module';
 import { adblock } from './adblock/adblock.ts';
 import { sponsorblock } from './sponsorblock/sponsorblock.ts';
 import { ryd } from './return-youtube-dislike/ryd.ts';
+import { qualityRemoval } from './quality-removal/quality-removal.ts';
 // Explicitly bundled extensions only. Add each extension's declaration once here.
 export const extensionCatalog: readonly ExtensionModule[] = [
   adblock,
   sponsorblock,
   ryd,
+  qualityRemoval,
 ];

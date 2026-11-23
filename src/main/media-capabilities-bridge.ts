@@ -1,17 +1,17 @@
 import type { IpcMain, IpcMainEvent, WebContents } from 'electron';
 import {
   HARDWARE_CODECS_IPC,
-  freezeHardwareCodecSnapshot,
-  type HardwareCodecSnapshot,
+  freezeCodecBootstrapSnapshot,
+  type CodecBootstrapSnapshot,
 } from '../shared/media-capabilities';
 import { isTVDisplayURL } from '../shared/tv-display';
 
 export function connectHardwareCodecs(
   ipc: IpcMain,
   contents: WebContents,
-  reportWarning: (message: string) => void,
+  reportWarning: (detail: string) => void,
 ) {
-  let snapshot: HardwareCodecSnapshot | undefined;
+  let snapshot: CodecBootstrapSnapshot | undefined;
   let disposed = false;
   const trusted = (event: IpcMainEvent) =>
     !disposed &&
@@ -48,15 +48,15 @@ export function connectHardwareCodecs(
       args[0].length > 0 &&
       args[0].length <= 1000
     )
-      reportWarning(`Hardware codec filtering unavailable: ${args[0]}`);
+      reportWarning(args[0]);
   };
   ipc.on(HARDWARE_CODECS_IPC.bootstrap, bootstrap);
   ipc.on(HARDWARE_CODECS_IPC.failure, failure);
   return {
-    update(value: HardwareCodecSnapshot | undefined) {
+    update(value: CodecBootstrapSnapshot | undefined) {
       if (!disposed)
         snapshot =
-          value === undefined ? undefined : freezeHardwareCodecSnapshot(value);
+          value === undefined ? undefined : freezeCodecBootstrapSnapshot(value);
     },
     dispose() {
       disposed = true;

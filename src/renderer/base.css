@@ -3,9 +3,6 @@
   color-scheme: dark;
   color: #f4f5f7;
   font-synthesis: none;
-  --muted: #a2aab9;
-  --accent: #c8f5b2;
-  --line: #ffffff15;
 }
 * {
   box-sizing: border-box;

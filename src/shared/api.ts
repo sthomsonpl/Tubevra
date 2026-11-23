@@ -1,6 +1,8 @@
 import type { PlaybackResolution } from './tv-display';
+import type { CodecPreferences } from './media-capabilities';
 import type { ExtensionsState } from '../extensions/types';
 import type { ExtensionCommand } from '../extensions/types';
+import type { Language, LanguagePreference } from './i18n/language';
 
 export interface CustomUserAgent {
   id: string;
@@ -20,9 +22,27 @@ export type UserAgentCommand =
   | { type: 'remove'; id: string; replacementId?: string };
 
 export interface GeneralSettingsState {
+  language: Language;
+  languagePreference: LanguagePreference;
+  codecPreferences: CodecPreferences;
   playbackResolution: PlaybackResolution;
   hardwareAcceleration: boolean;
   restartRequired: boolean;
+}
+
+export const SETTINGS_SECTIONS = [
+  'general',
+  'tv',
+  'user-agents',
+  'extensions',
+  'about',
+] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
+// `detail` is a raw technical message and is not localized.
+export interface CodecWarning {
+  reason: 'gpuStopped' | 'detectionFailed' | 'playerReported';
+  detail?: string;
 }
 
 export interface AppState {
@@ -34,9 +54,11 @@ export interface AppState {
   playbackFullscreen: boolean;
   windowFullscreen: boolean;
   settingsOpen: boolean;
+  settingsSection: SettingsSection;
   loading: boolean;
   error: string | null;
-  codecWarning: string | null;
+  codecWarning: CodecWarning | null;
+  codecReloadRequired: boolean;
 }
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -54,6 +76,8 @@ export interface ExtensionsAPI {
 }
 
 export interface TubevraAPI extends ExtensionsAPI {
+  setLanguage(language: LanguagePreference): Promise<Result<AppState>>;
+  setCodecPreferences(value: CodecPreferences): Promise<Result<AppState>>;
   toggleFullscreen(): Promise<Result<AppState>>;
   setPlaybackResolution(value: PlaybackResolution): Promise<Result<AppState>>;
   setHardwareAcceleration(enabled: boolean): Promise<Result<AppState>>;
@@ -67,10 +91,13 @@ export interface TubevraAPI extends ExtensionsAPI {
   updateUserAgents(command: UserAgentCommand): Promise<Result<AppState>>;
   navigate(action: 'back' | 'home'): Promise<Result<AppState>>;
   setSettingsOpen(open: boolean): Promise<Result<AppState>>;
+  setSettingsSection(section: SettingsSection): Promise<Result<null>>;
   onStateChanged(listener: (state: AppState) => void): () => void;
 }
 
 export const IPC = Object.freeze({
+  setLanguage: 'tubevra:set-language',
+  setCodecPreferences: 'tubevra:set-codec-preferences',
   toggleFullscreen: 'tubevra:toggle-fullscreen',
   setHardwareAcceleration: 'tubevra:set-hardware-acceleration',
   setPlaybackResolution: 'tubevra:set-playback-resolution',
@@ -84,6 +111,7 @@ export const IPC = Object.freeze({
   updateUserAgents: 'tubevra:update-user-agents',
   navigate: 'tubevra:navigate',
   setSettingsOpen: 'tubevra:set-settings-open',
+  setSettingsSection: 'tubevra:set-settings-section',
   stateChanged: 'tubevra:state-changed',
   requestTVBack: 'tubevra:request-tv-back',
   dispatchTVBack: 'tubevra:dispatch-tv-back',

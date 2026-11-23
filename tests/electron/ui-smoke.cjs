@@ -62,18 +62,27 @@ async function waitFor(predicate, description) {
 }
 async function capture(win, name) {
   await new Promise((resolve) => setTimeout(resolve, 700));
-  const sources = await desktopCapturer.getSources({
-    types: ['window'],
-    thumbnailSize: { width: 1600, height: 1200 },
-  });
-  const source = sources.find((entry) => entry.id === win.getMediaSourceId());
-  assert.ok(source && !source.thumbnail.isEmpty());
+  // Native window sources can temporarily disappear during view/fullscreen
+  // transitions. Require the real window thumbnail before taking the snapshot.
+  const source = await waitFor(async () => {
+    const sources = await desktopCapturer.getSources({
+      types: ['window'],
+      thumbnailSize: { width: 1600, height: 1200 },
+    });
+    const current = sources.find(
+      (entry) => entry.id === win.getMediaSourceId(),
+    );
+    return current && !current.thumbnail.isEmpty() ? current : null;
+  }, `window capture: ${name}`);
   fs.writeFileSync(path.join(output, `${name}.png`), source.thumbnail.toPNG());
 }
 
 app
   .whenReady()
   .then(async () => {
+    // English display language, Polish regional format and secondary language.
+    app.getPreferredSystemLanguages = () => ['en-US', 'pl-PL'];
+    app.getSystemLocale = () => 'pl-PL';
     let cursor = { x: -100000, y: -100000 };
     screen.getCursorScreenPoint = () => cursor;
     await session
@@ -111,7 +120,16 @@ app
     win.setAlwaysOnTop(true);
     win.show();
     win.focus();
-    const shell = win.webContents;
+    const shell = await waitFor(
+      () =>
+        win.contentView.children.find(
+          (view) =>
+            view.webContents &&
+            view.webContents.getURL().startsWith('file:') &&
+            !view.webContents.getURL().includes('#'),
+        )?.webContents,
+      'local settings surface',
+    );
     const toolbar = await waitFor(
       () =>
         webContents
@@ -165,6 +183,395 @@ app
       'tubevra:open-privacy-policy',
     );
     const trusted = { sender: shell, senderFrame: shell.mainFrame };
+    const ratings = await waitFor(
+      () =>
+        webContents
+          .getAllWebContents()
+          .find((entry) => entry.getURL().endsWith('#ratings')),
+      'ratings view',
+    );
+    const setLanguageChannel = 'tubevra:set-language';
+    const setSectionChannel = 'tubevra:set-settings-section';
+    const ratingsLanguageChannel = 'tubevra:ratings:get-language';
+    const optionsLanguageChannel = 'tubevra:options:get-language';
+    const setLanguage = ipcMain._invokeHandlers.get(setLanguageChannel);
+    const setSection = ipcMain._invokeHandlers.get(setSectionChannel);
+    const getRatingsLanguage = ipcMain._invokeHandlers.get(
+      ratingsLanguageChannel,
+    );
+    const getOptionsLanguage = ipcMain._invokeHandlers.get(
+      optionsLanguageChannel,
+    );
+    for (const event of [
+      { sender: tv, senderFrame: tv.mainFrame },
+      { sender: toolbar, senderFrame: toolbar.mainFrame },
+      { sender: shell, senderFrame: { url: shell.getURL() } },
+    ]) {
+      await assert.rejects(async () => setLanguage(event, 'auto'), /Untrusted/);
+      assert.throws(() => setSection(event, 'about'), /Untrusted/);
+    }
+    assert.equal(setSection(trusted).ok, false);
+    assert.equal(setSection(trusted, 'about', 'general').ok, false);
+    assert.equal(setSection(trusted, 'unknown').ok, false);
+    await assert.rejects(async () => getRatingsLanguage(trusted), /Untrusted/);
+    await assert.rejects(async () => getOptionsLanguage(trusted), /Untrusted/);
+    assert.equal((await setLanguage(trusted)).ok, false);
+    assert.equal((await setLanguage(trusted, 'pl', 'en')).ok, false);
+    assert.equal((await setLanguage(trusted, 'de')).ok, false);
+    assert.equal((await state()).general.language, 'en');
+    assert.equal((await state()).general.languagePreference, 'auto');
+    assert.equal(
+      await ratings.executeJavaScript('window.ratings.getLanguage()'),
+      'en',
+    );
+    assert.equal(
+      (await shell.executeJavaScript('window.tubevra.setSettingsOpen(true)'))
+        .ok,
+      true,
+    );
+    const visibleSection = () =>
+      shell.executeJavaScript(`[
+        document.querySelector('.nav-item[aria-current="page"]').dataset.section,
+        document.querySelector('.section-panel:not([hidden])').id,
+      ]`);
+    assert.deepEqual(await visibleSection(), ['general', 'panel-general']);
+    await shell.executeJavaScript(
+      `document.querySelector('[data-section="user-agents"]').click()`,
+    );
+    await waitFor(
+      async () => (await state()).settingsSection === 'user-agents',
+      'selected settings section reaches the main process',
+    );
+    await click(shell, 'done');
+    await waitFor(async () => !(await state()).settingsOpen, 'settings close');
+    await click(toolbar, 'settings');
+    await waitFor(async () => (await state()).settingsOpen, 'settings reopen');
+    assert.deepEqual(await visibleSection(), [
+      'user-agents',
+      'panel-user-agents',
+    ]);
+    checks.push(
+      'General opens by default and the selected section survives closing settings',
+    );
+    await shell.executeJavaScript(`
+      document.querySelector('#new-preset').click();
+      for (const [id, value] of [['preset-name', 'Draft <&>'], ['preset-value', 'Draft UA']]) {
+        const input = document.getElementById(id);
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      document.querySelector('[data-section="general"]').click();
+      window.initialLanguageControl = document.querySelector('#app-language');
+      void 0;
+    `);
+    const languageControl = () =>
+      shell.executeJavaScript(`(() => {
+        const select = document.getElementById('app-language');
+        return [select.value, select.options[0].textContent, select.disabled];
+      })()`);
+    assert.deepEqual(await languageControl(), ['auto', 'Auto (system)', false]);
+    const chooseLanguage = (language) =>
+      shell.executeJavaScript(`(() => {
+        const languageControl = document.getElementById('app-language');
+        languageControl.focus();
+        languageControl.value = ${JSON.stringify(language)};
+        languageControl.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+    await waitFor(
+      () =>
+        ratings.executeJavaScript(
+          "document.querySelector('canvas').dataset.version !== '-1'",
+        ),
+      'initial ratings canvas',
+    );
+    const ratingsCanvas = () =>
+      ratings.executeJavaScript("document.querySelector('canvas').toDataURL()");
+    const englishRatings = await ratingsCanvas();
+    for (const surface of [shell, toolbar])
+      await surface.executeJavaScript(`
+        window.languageChanges = [];
+        window.releaseLanguage = window.tubevra.onStateChanged((state) => window.languageChanges.push(state.general.language));
+        void 0;
+      `);
+    await ratings.executeJavaScript(`
+      window.languageChanges = [];
+      window.releaseLanguage = window.ratings.onLanguageChanged((language) => window.languageChanges.push(language));
+      void 0;
+    `);
+    const settingsFile = path.join(profile, 'general-settings.json');
+    const requestCount = requests.length;
+    fs.mkdirSync(settingsFile);
+    try {
+      await chooseLanguage('pl');
+      await waitFor(
+        () =>
+          shell.executeJavaScript(
+            "document.querySelector('#language-feedback').textContent.includes('Could not save') && !document.getElementById('app-language').disabled",
+          ),
+        'language save error',
+      );
+      assert.deepEqual(
+        await shell.executeJavaScript(
+          "[document.documentElement.lang, document.getElementById('app-language').value]",
+        ),
+        ['en', 'auto'],
+      );
+      assert.equal((await state()).general.language, 'en');
+      for (const surface of [shell, toolbar, ratings])
+        assert.deepEqual(
+          await surface.executeJavaScript('window.languageChanges'),
+          [],
+        );
+    } finally {
+      fs.rmdirSync(settingsFile);
+    }
+    await chooseLanguage('pl');
+    await waitFor(
+      () =>
+        shell.executeJavaScript(
+          "document.documentElement.lang === 'pl' && !document.getElementById('app-language').disabled",
+        ),
+      'Polish settings',
+    );
+    assert.equal((await state()).general.language, 'pl');
+    assert.deepEqual(await languageControl(), ['pl', 'Auto', false]);
+    assert.equal(
+      JSON.parse(fs.readFileSync(settingsFile, 'utf8')).language,
+      'pl',
+    );
+    for (const surface of [shell, toolbar, ratings]) {
+      await waitFor(
+        () =>
+          surface.executeJavaScript("window.languageChanges.includes('pl')"),
+        'saved language publication',
+      );
+      await surface.executeJavaScript('window.releaseLanguage()');
+    }
+    assert.equal(
+      await ratings.executeJavaScript('window.ratings.getLanguage()'),
+      'pl',
+    );
+    assert.deepEqual(
+      await shell.executeJavaScript(`[
+        document.getElementById('settings-title').textContent,
+        document.querySelector('label[for="app-language"]').textContent,
+        document.activeElement === window.initialLanguageControl,
+        document.getElementById('preset-name').value,
+        document.getElementById('preset-value').value,
+        document.getElementById('detail-title').textContent,
+      ]`),
+      ['Ogólne', 'Język', true, 'Draft <&>', 'Draft UA', 'Nowy profil'],
+    );
+    assert.deepEqual(
+      await toolbar.executeJavaScript(`[
+        document.documentElement.lang,
+        document.querySelector('#back').getAttribute('aria-label'),
+        document.querySelector('#fullscreen').title,
+      ]`),
+      ['pl', 'Wstecz', 'Włącz pełny ekran (F11)'],
+    );
+    assert.deepEqual(
+      await ratings.executeJavaScript(
+        "[document.documentElement.lang, document.querySelector('small').textContent]",
+      ),
+      ['pl', 'RYD · Szacunkowe oceny'],
+    );
+    assert.notEqual(await ratingsCanvas(), englishRatings);
+    assert.equal(requests.length, requestCount);
+    for (const [hash, bridge, kind, heading] of [
+      [
+        '#extension-settings',
+        'extensionSettings',
+        '',
+        'Return YouTube Dislike',
+      ],
+      ['#codec-settings', 'codecSettings', "'codecs'", 'Kodeki wideo'],
+      [
+        '#quality-removal-settings',
+        'qualityRemovalSettings',
+        "'quality-removal'",
+        'YouTube Quality Remover',
+      ],
+    ]) {
+      const opened = await shell.executeJavaScript(
+        `window.extensionSettingsHost.open(${kind})`,
+      );
+      assert.equal(opened.ok, true, `${hash}: ${JSON.stringify(opened)}`);
+      const options = webContents
+        .getAllWebContents()
+        .find((entry) => entry.getURL().endsWith(hash));
+      assert.ok(options);
+      assert.equal(
+        await options.executeJavaScript(`window.${bridge}.getLanguage()`),
+        'pl',
+      );
+      await waitFor(
+        () =>
+          options.executeJavaScript(
+            "Boolean(document.querySelector('dialog[open] .primary:enabled'))",
+          ),
+        'localized options',
+      );
+      assert.deepEqual(
+        await options.executeJavaScript(
+          "[document.documentElement.lang, document.querySelector('h2').textContent, document.querySelector('.ui-button--cancel').textContent]",
+        ),
+        ['pl', heading, 'Anuluj'],
+      );
+      await options.executeJavaScript(
+        "document.querySelector('.ui-button--cancel').click()",
+      );
+      await waitFor(
+        () =>
+          options.executeJavaScript("!document.querySelector('dialog').open"),
+        'options close',
+      );
+      await assert.rejects(
+        async () =>
+          getOptionsLanguage({
+            sender: options,
+            senderFrame: options.mainFrame,
+          }),
+        /Untrusted/,
+      );
+    }
+    // Quality Remover: Cancel discards a draft, Save stores a validated selection.
+    const openQuality = async () => {
+      assert.equal(
+        (
+          await shell.executeJavaScript(
+            "window.extensionSettingsHost.open('quality-removal')",
+          )
+        ).ok,
+        true,
+      );
+      const options = webContents
+        .getAllWebContents()
+        .find((entry) => entry.getURL().endsWith('#quality-removal-settings'));
+      assert.ok(options);
+      await waitFor(
+        () =>
+          options.executeJavaScript(
+            "Boolean(document.querySelector('dialog[open] .primary:enabled'))",
+          ),
+        'quality options ready',
+      );
+      return options;
+    };
+    const closeQuality = async (options, button) => {
+      await options.executeJavaScript(
+        `document.querySelector('${button}').click()`,
+      );
+      await waitFor(
+        () =>
+          options.executeJavaScript("!document.querySelector('dialog').open"),
+        'quality options close',
+      );
+    };
+    const qualityChecks = (options) =>
+      options.executeJavaScript(
+        "['144', '240', '360', '480'].map((p) => document.getElementById('quality-' + p).checked)",
+      );
+    const savedQuality = async () =>
+      (await shell.executeJavaScript('window.tubevra.getExtensions()')).value
+        .qualityRemoval.hidden;
+    let quality = await openQuality();
+    assert.deepEqual(await qualityChecks(quality), [
+      false,
+      false,
+      false,
+      false,
+    ]);
+    await quality.executeJavaScript(
+      "document.getElementById('quality-240').click()",
+    );
+    await closeQuality(quality, '.ui-button--cancel');
+    assert.deepEqual(await savedQuality(), []);
+    quality = await openQuality();
+    assert.deepEqual(await qualityChecks(quality), [
+      false,
+      false,
+      false,
+      false,
+    ]);
+    await quality.executeJavaScript(
+      "document.getElementById('quality-240').click(); document.getElementById('quality-480').click()",
+    );
+    await closeQuality(quality, '.primary');
+    assert.deepEqual(await savedQuality(), [240, 480]);
+    quality = await openQuality();
+    assert.deepEqual(await qualityChecks(quality), [false, true, false, true]);
+    await closeQuality(quality, '.ui-button--cancel');
+    assert.equal(
+      (
+        await shell.executeJavaScript(
+          'window.tubevra.setExtensionEnabled({ id: "quality-removal", enabled: false })',
+        )
+      ).ok,
+      true,
+    );
+    assert.deepEqual(await savedQuality(), [240, 480]);
+    assert.equal(
+      (await toolbar.executeJavaScript('window.tubevra.toggleFullscreen()')).ok,
+      true,
+    );
+    await waitFor(
+      () =>
+        toolbar.executeJavaScript(
+          "document.querySelector('#fullscreen').title === 'Wyłącz pełny ekran (F11)'",
+        ),
+      'Polish fullscreen control',
+    );
+    await chooseLanguage('auto');
+    for (const surface of [shell, toolbar, ratings])
+      await waitFor(
+        () =>
+          surface.executeJavaScript("document.documentElement.lang === 'en'"),
+        'English after switching to Auto',
+      );
+    await waitFor(async () => {
+      const [value, label, disabled] = await languageControl();
+      return value === 'auto' && label === 'Auto (system)' && !disabled;
+    }, 'Auto selection');
+    assert.equal((await state()).general.languagePreference, 'auto');
+    assert.equal(
+      JSON.parse(fs.readFileSync(settingsFile, 'utf8')).language,
+      'auto',
+    );
+    await chooseLanguage('en');
+    await waitFor(async () => {
+      const [value, , disabled] = await languageControl();
+      return (
+        value === 'en' &&
+        !disabled &&
+        (await state()).general.languagePreference === 'en'
+      );
+    }, 'manual English with the same effective language');
+    assert.equal(await ratingsCanvas(), englishRatings);
+    assert.equal(requests.length, requestCount);
+    assert.equal((await state()).windowFullscreen, true);
+    assert.equal(
+      await toolbar.executeJavaScript(
+        "document.querySelector('#fullscreen').title",
+      ),
+      'Exit fullscreen (F11)',
+    );
+    assert.equal(
+      (await toolbar.executeJavaScript('window.tubevra.toggleFullscreen()')).ok,
+      true,
+    );
+    await shell.executeJavaScript(`
+      document.querySelector('[data-section="user-agents"]').click();
+      document.querySelector('#discard').click();
+    `);
+    assert.equal(
+      (await shell.executeJavaScript('window.tubevra.setSettingsOpen(false)'))
+        .ok,
+      true,
+    );
+    checks.push(
+      'language IPC authorization, atomic save, Auto/EN/PL switch, focus, draft, ratings canvas and localized options',
+    );
     const toggleFullscreen = ipcMain._invokeHandlers.get(
       'tubevra:toggle-fullscreen',
     );
@@ -341,7 +748,7 @@ app
       (
         await shell.executeJavaScript('window.tubevra.getExtensions()')
       ).value.items.map((item) => item.id),
-      ['adblock', 'sponsorblock', 'return-youtube-dislike'],
+      ['adblock', 'sponsorblock', 'return-youtube-dislike', 'quality-removal'],
     );
     await shell.executeJavaScript(
       `document.querySelector('[data-section="user-agents"]').click()`,
@@ -764,6 +1171,64 @@ app
 
     await click(toolbar, 'settings');
     await waitFor(async () => (await state()).settingsOpen, 'settings open');
+    const brandImages = await shell.executeJavaScript(
+      '[...document.querySelectorAll(".brand-mark img")].map(img => img.complete && img.naturalWidth > 0)',
+    );
+    assert.deepEqual(brandImages, [true, true], 'packaged Tubevra icons load');
+    const localView = win.contentView.children.find(
+      (view) => view.webContents === shell,
+    );
+    const tvView = win.contentView.children.find(
+      (view) => view.webContents === tv,
+    );
+    assert.equal(localView.getVisible(), true);
+    assert.equal(
+      tvView.getVisible(),
+      true,
+      'live YouTube remains below the glass',
+    );
+    assert.ok(
+      win.contentView.children.indexOf(localView) >
+        win.contentView.children.indexOf(tvView),
+    );
+    assert.equal(
+      await shell.executeJavaScript(
+        'document.body.classList.contains("glass-active")',
+      ),
+      true,
+    );
+    checks.push(
+      'settings glass sits above live YouTube in a separate native view',
+    );
+    const sharedSelects = await shell.executeJavaScript(`(() => {
+      const glass = document.body.classList.contains('glass-active');
+      const results = [];
+      for (const active of [false, true]) {
+        document.body.classList.toggle('glass-active', active);
+        results.push(['playback-resolution', 'replacement'].map(id => {
+          const el = document.getElementById(id);
+          const control = getComputedStyle(el);
+          const picker = getComputedStyle(el, '::picker(select)');
+          return [control.appearance, control.backgroundColor, control.borderRadius,
+            picker.appearance, picker.backgroundColor, picker.borderRadius];
+        }));
+      }
+      document.body.classList.toggle('glass-active', glass);
+      return results;
+    })()`);
+    for (const [resolution, replacement] of sharedSelects) {
+      assert.deepEqual(
+        resolution,
+        replacement,
+        'selects share control and picker styling',
+      );
+      assert.equal(resolution[0], 'base-select');
+      assert.equal(resolution[3], 'base-select');
+    }
+    checks.push(
+      'both selects share picker and control presentation in solid and glass themes',
+    );
+
     await shell.executeJavaScript(
       `document.querySelector('[data-section="about"]').click()`,
     );
@@ -889,7 +1354,9 @@ app
       customName,
     );
     assert.equal(
-      await shell.executeJavaScript('document.querySelectorAll("img").length'),
+      await shell.executeJavaScript(
+        'document.querySelectorAll("img:not(.brand-mark img)").length',
+      ),
       0,
     );
     await click(shell, 'apply-preset');
@@ -995,6 +1462,12 @@ app
 
     await click(shell, 'done');
     await waitFor(async () => !(await state()).settingsOpen, 'settings closed');
+    assert.equal(
+      localView.getVisible(),
+      false,
+      'closed settings do not intercept TV input',
+    );
+    assert.equal(tvView.getVisible(), true);
     // Resizing the test window can change native focus on Windows.
     win.focus();
     tv.focus();
@@ -1048,6 +1521,61 @@ app
     );
     checks.push(
       'Back emits Escape; input and simulated composition guards on local fixture',
+    );
+    await tv.executeJavaScript(`
+      window.closeAttempts = 0;
+      window.exitOnBack = e => {
+        if (e.key === 'Escape') { window.closeAttempts++; window.close(); }
+      };
+      document.addEventListener('keydown', window.exitOnBack);
+      for (let i=0;i<50;i++) window.close();
+    `);
+    for (let i = 0; i < 20; i++) {
+      await click(toolbar, 'back');
+      await waitFor(
+        async () =>
+          (await tv.executeJavaScript('window.closeAttempts')) === i + 1,
+        'Back exit request ignored',
+      );
+    }
+    await tv.executeJavaScript(
+      `document.removeEventListener('keydown',window.exitOnBack)`,
+    );
+    assert.equal(tv.isDestroyed(), false);
+    assert.equal((await state()).error, null);
+    // A rejected IPC must leave the dock usable for a subsequent action.
+    ipcMain.removeHandler('tubevra:toggle-fullscreen');
+    ipcMain.handle('tubevra:toggle-fullscreen', () => {
+      throw Error('Forced dock IPC failure');
+    });
+    await click(toolbar, 'fullscreen');
+    await waitFor(
+      async () =>
+        toolbar.executeJavaScript(
+          '!document.querySelector(".toolbar-error").hidden',
+        ),
+      'visible dock IPC error',
+    );
+    assert.equal(
+      await toolbar.executeJavaScript(
+        'document.querySelectorAll(".toolbar button").length',
+      ),
+      4,
+    );
+    ipcMain.removeHandler('tubevra:toggle-fullscreen');
+    ipcMain.handle('tubevra:toggle-fullscreen', toggleFullscreen);
+    await click(toolbar, 'settings');
+    await waitFor(
+      async () => (await state()).settingsOpen,
+      'dock usable after rejected IPC',
+    );
+    await click(toolbar, 'back');
+    await waitFor(
+      async () => !(await state()).settingsOpen,
+      'settings closed after rejected IPC',
+    );
+    checks.push(
+      'page close and repeated exit-on-Back requests retain TV; dock survives rejected IPC',
     );
 
     await tv.executeJavaScript(
@@ -1131,12 +1659,41 @@ app
       'compact layout, validated visibility IPC, visible reload failure without UA fallback',
     );
     assert.deepEqual(errors, []);
+    tv.close();
+    await waitFor(
+      async () => !!(await state()).error,
+      'destroyed TV view reported',
+    );
+    assert.match((await state()).error, /YouTube view closed/);
+    assert.equal(
+      (await toolbar.executeJavaScript('window.tubevra.navigate("home")')).ok,
+      false,
+    );
+    assert.equal(
+      (await toolbar.executeJavaScript('window.tubevra.setSettingsOpen(true)'))
+        .ok,
+      true,
+    );
+    checks.push(
+      'unexpected TV destruction reports an error and keeps settings accessible',
+    );
     console.log(JSON.stringify({ checks, requests, profile, output }, null, 2));
     fs.writeFileSync(
       path.join(output, 'report.json'),
       JSON.stringify({ checks, requests, errors, profile }, null, 2),
     );
-    win.destroy();
+    win.close();
+    await waitFor(
+      () => win.isDestroyed(),
+      'native host close remains available',
+    );
+    for (const channel of [
+      setLanguageChannel,
+      setSectionChannel,
+      ratingsLanguageChannel,
+      optionsLanguageChannel,
+    ])
+      assert.equal(ipcMain._invokeHandlers.has(channel), false, channel);
     app.exit(0);
   })
   .catch((error) => {

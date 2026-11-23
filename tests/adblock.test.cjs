@@ -22,32 +22,39 @@ const player = (extra = {}) => ({
   paidContentOverlay: { fixture: true },
   ...extra,
 });
-function runtime({ enabled = true, setup = '' } = {}) {
+function runtime({ enabled = true, setup = '', hidden } = {}) {
   const realm = vm.createContext({ AbortController });
   const run = (source) => vm.runInContext(source, realm);
   run('globalThis.nativeParse = JSON.parse');
   if (setup) run(setup);
   run('globalThis.originalParse = JSON.parse');
+  const hooks = (adblockEnabled, qualityEnabled) => [
+    { id: 'adblock', enabled: adblockEnabled },
+    { id: 'quality-removal', enabled: qualityEnabled, options: hidden },
+  ];
   realm.initial = {
     document: 'adblock-test',
     revision: 0,
     items: [],
-    hooks: [{ id: 'adblock', enabled }],
+    hooks: hooks(enabled, hidden !== undefined),
   };
   const control = run(`(${factory})(initial)`);
   return {
     realm,
     run,
     control,
+    lastAdblockReport() {
+      return control.drain().findLast(({ id }) => id === 'adblock');
+    },
     parse(input) {
       realm.text = JSON.stringify(input);
       return JSON.parse(run('JSON.stringify(JSON.parse(text))'));
     },
-    toggle(revision, enabled) {
+    toggle(revision, enabled, qualityEnabled = false) {
       control.apply({
         ...realm.initial,
         revision,
-        hooks: [{ id: 'adblock', enabled }],
+        hooks: hooks(enabled, qualityEnabled),
       });
     },
   };
@@ -57,7 +64,7 @@ test('serialized production module clears both ad fields and preserves player da
   const r = runtime();
   const input = player({ ...ads(), playerAds: [{ untouched: true }] });
   assert.deepEqual(r.parse(input), { ...input, adPlacements: [], adSlots: [] });
-  const report = r.control.drain().at(-1);
+  const report = r.lastAdblockReport();
   assert.equal(report.status, 'active');
   assert.match(report.reloadReason, /changed player data/);
   r.control.dispose();
@@ -157,9 +164,9 @@ test('feed removes a banner and row slots, preserves content and requires reload
     ),
     home([shelf([tile, tile])]),
   );
-  assert.match(r.control.drain().at(-1).reloadReason, /changed feed data/);
+  assert.match(r.lastAdblockReport().reloadReason, /changed feed data/);
   r.toggle(1, false);
-  assert.ok(r.control.drain().at(-1).reloadReason);
+  assert.ok(r.lastAdblockReport().reloadReason);
   r.control.dispose();
 });
 
@@ -188,7 +195,7 @@ test('surface refresh filters banners and row ads on repeated responses', () => 
   ]);
   const expected = surfaceContinuation([shelf([tile, tile])]);
   for (let i = 0; i < 3; i++) assert.deepEqual(r.parse(input), expected);
-  assert.equal(r.control.drain().at(-1).status, 'active');
+  assert.equal(r.lastAdblockReport().status, 'active');
   assert.deepEqual(r.parse(expected), expected);
   r.toggle(1, false);
   assert.deepEqual(r.parse(input), input);
@@ -208,7 +215,7 @@ test('surface refresh without ads needs no reload and malformed data is not part
     shelf([{ adSlotRenderer: null }]),
   ]);
   assert.deepEqual(r.parse(malformed), malformed);
-  const report = r.control.drain().at(-1);
+  const report = r.lastAdblockReport();
   assert.equal(report.status, 'error');
   assert.match(report.error, /tvSurfaceContentContinuation.*adSlotRenderer/);
   assert.equal(report.reloadReason, null);
@@ -306,7 +313,7 @@ test('feed validation precedes all player and feed writes; partial write errors 
     ...home([{ adSlotRenderer: {} }, shelf([{ adSlotRenderer: null }])]),
   };
   assert.deepEqual(r.parse(input), input);
-  const report = r.control.drain().at(-1);
+  const report = r.lastAdblockReport();
   assert.match(report.error, /incompatible feed field.*items.*adSlotRenderer/);
   assert.equal(report.reloadReason, null);
   assert.equal(r.run('JSON.parse === originalParse'), true);
@@ -321,7 +328,7 @@ test('feed validation precedes all player and feed writes; partial write errors 
       ),
     /cannot filter feed/,
   );
-  assert.ok(partial.control.drain().at(-1).reloadReason);
+  assert.ok(partial.lastAdblockReport().reloadReason);
   partial.control.dispose();
 });
 
@@ -339,7 +346,7 @@ test('all fields are validated before mutation; incompatible data reports and de
       const r = runtime();
       const input = player({ ...ads(), [field]: value });
       assert.deepEqual(r.parse(input), input);
-      const report = r.control.drain().at(-1);
+      const report = r.lastAdblockReport();
       assert.equal(report.status, 'error');
       assert.match(report.error, new RegExp('incompatible.*' + field));
       assert.equal(report.reloadReason, null);
@@ -372,7 +379,7 @@ test('parser forwards receiver, all arguments, reviver and original exception ex
   }})()`),
     true,
   );
-  assert.equal(r.control.drain().at(-1).status, 'active');
+  assert.equal(r.lastAdblockReport().status, 'active');
   r.control.dispose();
 });
 
@@ -430,7 +437,7 @@ test('inherited signatures and sparse or inherited renderer entries are not trus
     const current = runtime();
     current.realm.text = r.realm.text;
     current.run(`JSON.parse(text, ${reviver})`);
-    assert.match(current.control.drain().at(-1).error, /incompatible.*adSlots/);
+    assert.match(current.lastAdblockReport().error, /incompatible.*adSlots/);
     assert.equal(current.run('JSON.parse === originalParse'), true);
   }
 });
@@ -450,7 +457,7 @@ test('write failure reports transformation error without a second parser call', 
     /cannot clear/,
   );
   assert.equal(r.run('calls'), 1);
-  assert.match(r.control.drain().at(-1).error, /cannot clear/);
+  assert.match(r.lastAdblockReport().error, /cannot clear/);
   assert.equal(r.run('JSON.parse === originalParse'), true);
 });
 
@@ -465,7 +472,7 @@ test('reload survives an error after partial mutation', () => {
   })`),
     /cannot clear.*adSlots/,
   );
-  const report = r.control.drain().at(-1);
+  const report = r.lastAdblockReport();
   assert.equal(report.status, 'error');
   assert.ok(report.reloadReason);
 });
@@ -478,10 +485,10 @@ test('disable restores the descriptor and stops retained wrappers while keeping 
   assert.equal(r.run('JSON.parse === originalParse'), true);
   r.realm.text = JSON.stringify(player(ads()));
   assert.equal(r.run('retained(text).adSlots.length'), 2);
-  assert.ok(r.control.drain().at(-1).reloadReason);
+  assert.ok(r.lastAdblockReport().reloadReason);
   r.toggle(2, true);
   assert.equal(r.run('JSON.parse === originalParse'), true);
-  assert.match(r.control.drain().at(-1).reloadReason, /new document/);
+  assert.match(r.lastAdblockReport().reloadReason, /new document/);
   r.control.dispose();
   const next = runtime();
   assert.deepEqual(
@@ -496,7 +503,7 @@ test('initially disabled Adblock defers installation until a new document', () =
   assert.deepEqual(r.parse(player(ads())), player(ads()));
   r.toggle(1, true);
   assert.equal(r.run('JSON.parse === originalParse'), true);
-  assert.match(r.control.drain().at(-1).reloadReason, /new document/);
+  assert.match(r.lastAdblockReport().reloadReason, /new document/);
   r.control.dispose();
 });
 
@@ -524,38 +531,134 @@ test('cleanup conflict preserves another owner and requests reload', () => {
   r.run('JSON.parse = function other() {}; globalThis.other = JSON.parse');
   r.toggle(1, false);
   assert.equal(r.run('JSON.parse === other'), true);
-  const report = r.control.drain().at(-1);
+  const report = r.lastAdblockReport();
   assert.match(report.error, /restoration conflict/);
   assert.ok(report.reloadReason);
 });
 
-test('a second module cannot acquire the parser already owned by Adblock', async () => {
-  const { buildHookEntry } = await import('../build/extensions.mjs');
-  const { adblock } = await import('../src/extensions/adblock/adblock.ts');
-  const source = await buildHookEntry([adblock, { ...adblock, id: 'second' }]);
-  const entry = vm.runInNewContext(
-    source.replace('export function', 'function') + ';hookEntry',
-    { AbortController },
-  );
-  const control = entry({
-    document: 'conflict',
-    revision: 0,
-    items: [],
-    hooks: [
-      { id: 'adblock', enabled: true },
-      { id: 'second', enabled: true },
+const video = (itag, qualityLabel, mimeType = 'video/mp4') => ({
+  itag,
+  qualityLabel,
+  mimeType,
+});
+const audio = { itag: 251, mimeType: 'audio/webm' };
+const stream = {
+  formats: [video(18, '360p')],
+  adaptiveFormats: [
+    video(160, '144p'),
+    video(133, '240p'),
+    video(242, '240p', 'video/webm'),
+    video(395, '240p', 'video/mp4; codecs="av01"'),
+    video(134, '360p'),
+    video(135, '480p60 HDR'),
+    video(137, '1080p Premium'),
+    audio,
+  ],
+  serverAbrStreamingUrl: 'fixture-sabr',
+};
+
+test('quality removal filters both format lists and retains SABR, audio, and other data', () => {
+  const input = player({ streamingData: stream });
+  for (const [hidden, removed] of [
+    [[144], [160]],
+    [[240], [133, 242, 395]],
+    [[360], [18, 134]],
+    [[480], [135]],
+    [
+      [144, 240, 360, 480],
+      [160, 133, 242, 395, 18, 134, 135],
     ],
+  ]) {
+    const r = runtime({ enabled: false, hidden });
+    assert.deepEqual(r.parse(input), {
+      ...input,
+      streamingData: {
+        ...stream,
+        formats: stream.formats.filter(({ itag }) => !removed.includes(itag)),
+        adaptiveFormats: stream.adaptiveFormats.filter(
+          ({ itag }) => !removed.includes(itag),
+        ),
+      },
+    });
+    // The filter stays active after changing data, so no reload is requested.
+    assert.equal(
+      r.control.drain().some((report) => report.reloadReason),
+      false,
+    );
+    r.control.dispose();
+  }
+});
+
+test('quality removal retains the last video and reports incompatible data without partial edits', () => {
+  const r = runtime({ hidden: [360] });
+  const last = player({
+    streamingData: { formats: stream.formats, adaptiveFormats: [audio] },
   });
-  const reports = control.drain();
+  assert.deepEqual(r.parse(last), last);
   assert.equal(
-    reports.find((report) => report.id === 'adblock').status,
-    'active',
+    r.control.drain().some((report) => report.reloadReason),
+    false,
   );
-  assert.match(
-    reports.find(
-      (report) => report.id === 'second' && report.status === 'error',
-    ).error,
-    /Conflicting hook target/,
+  const incompatible = player({
+    streamingData: { ...stream, adaptiveFormats: [{ mimeType: 'video/mp4' }] },
+  });
+  assert.deepEqual(r.parse(incompatible), incompatible);
+  assert.match(r.control.drain().at(-1).error, /Unrecognized video quality/);
+  assert.deepEqual(
+    r.parse(player({ ...ads(), streamingData: stream })).adSlots,
+    [],
   );
-  control.dispose();
+  r.control.dispose();
+});
+
+test('both filters share one parser call and clean up independently', () => {
+  for (const disableAdblock of [true, false]) {
+    const r = runtime({
+      hidden: [240],
+      setup:
+        'globalThis.parseCalls = 0; JSON.parse = function (...args) { parseCalls++; return nativeParse.apply(this, args); };',
+    });
+    const input = player({ ...ads(), streamingData: stream });
+    const has240p = (result) =>
+      result.streamingData.adaptiveFormats.some(
+        ({ qualityLabel }) => qualityLabel === '240p',
+      );
+    const both = r.parse(input);
+    assert.equal(r.run('parseCalls'), 1);
+    assert.equal(both.adSlots.length, 0);
+    assert.equal(has240p(both), false);
+    r.toggle(1, !disableAdblock, disableAdblock);
+    const one = r.parse(input);
+    assert.equal(one.adSlots.length, disableAdblock ? 2 : 0);
+    assert.equal(has240p(one), !disableAdblock);
+    r.toggle(2, false);
+    assert.equal(r.run('JSON.parse === originalParse'), true);
+    assert.deepEqual(r.parse(input), input);
+    r.control.dispose();
+  }
+});
+
+test('quality removal rejects invalid or missing options and leaves parsing untouched', () => {
+  for (const hidden of [[720], [240, 240], '240', [144, 240, 360, 480, 144]]) {
+    const r = runtime({ hidden });
+    const report = r.control
+      .drain()
+      .findLast(({ id }) => id === 'quality-removal');
+    assert.equal(report.status, 'error');
+    assert.match(report.error, /invalid hidden resolutions/);
+    const input = player({ streamingData: stream });
+    assert.deepEqual(r.parse(input), input);
+    r.control.dispose();
+  }
+  const r = runtime();
+  r.realm.initial.hooks = [
+    { id: 'adblock', enabled: false },
+    { id: 'quality-removal', enabled: true },
+  ];
+  const missing = r.run(`(${factory})(initial)`);
+  const report = missing.drain().findLast(({ id }) => id === 'quality-removal');
+  assert.equal(report.status, 'error');
+  assert.match(report.error, /invalid hidden resolutions/);
+  missing.dispose();
+  r.control.dispose();
 });
