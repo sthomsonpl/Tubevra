@@ -362,6 +362,14 @@ app
       ]`),
       ['Ogólne', 'Język', true, 'Draft <&>', 'Draft UA', 'Nowy profil'],
     );
+    // Status messages are retranslated, and the language save error is not kept.
+    assert.deepEqual(
+      await shell.executeJavaScript(`[
+        document.getElementById('feedback').textContent,
+        document.getElementById('language-feedback').textContent,
+      ]`),
+      ['Zapisz lub odrzuć zmiany przed wybraniem innego profilu.', ''],
+    );
     assert.deepEqual(
       await toolbar.executeJavaScript(`[
         document.documentElement.lang,

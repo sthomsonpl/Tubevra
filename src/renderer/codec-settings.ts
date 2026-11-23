@@ -2,6 +2,7 @@ import type { AppState } from '../shared/api';
 import type { CodecPreferences } from '../shared/media-capabilities';
 import { createWidgetRow } from './widgets';
 import type { Localization } from './localization';
+import { setStatus } from './status-message';
 
 export function mountCodecSettings(
   root: HTMLElement,
@@ -68,14 +69,11 @@ export function mountCodecSettings(
         allowedCodecs: current.general.codecPreferences.allowedCodecs,
       });
   });
-  const report = (error: string) => {
-    feedback.textContent = error;
-    feedback.classList.add('error');
-  };
+  const report = (build: () => string) => setStatus(feedback, build, true);
   window.extensionSettingsHost.onClosed((error) => {
     if (!blocker.open) return;
     blocker.close();
-    if (error) report(locale.error(error));
+    if (error) report(() => locale.error(error));
     button.focus({ preventScroll: true });
   });
   blocker.addEventListener('cancel', (event) => {
@@ -83,9 +81,9 @@ export function mountCodecSettings(
     void window.extensionSettingsHost
       .close()
       .then((result) => {
-        if (!result.ok) report(locale.error(result.error));
+        if (!result.ok) report(() => locale.error(result.error));
       })
-      .catch(() => report(t('common.communicationError')));
+      .catch(() => report(() => t('common.communicationError')));
   });
   button.addEventListener('click', async () => {
     blocker.showModal();
@@ -93,11 +91,11 @@ export function mountCodecSettings(
       const result = await window.extensionSettingsHost.open('codecs');
       if (!result.ok) {
         blocker.close();
-        report(locale.error(result.error));
+        report(() => locale.error(result.error));
       }
     } catch {
       blocker.close();
-      report(t('common.communicationError'));
+      report(() => t('common.communicationError'));
     }
   });
   return {

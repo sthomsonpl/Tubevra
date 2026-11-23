@@ -14,6 +14,7 @@ import {
   isLanguagePreference,
 } from '../shared/i18n/language';
 import type { Localization } from './localization';
+import { refreshStatuses, setStatus } from './status-message';
 
 const tubevraIcon = new URL('../../assets/icon/icon.ico', import.meta.url).href;
 
@@ -397,7 +398,7 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
       void run(
         () => window.tubevra.reloadTV(),
         undefined,
-        t('common.applied'),
+        'common.applied',
         codecSettings.feedback,
       );
     },
@@ -459,9 +460,8 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
     }
   }
 
-  function message(text: string, failure = false) {
-    feedback.textContent = text;
-    feedback.classList.toggle('error', failure);
+  function message(build: (() => string) | null, failure = false) {
+    setStatus(feedback, build, failure);
   }
   function controls() {
     codecSettings.render(current, busy);
@@ -620,7 +620,7 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
       createDeviceIcon(preset?.id ?? 'custom', !!preset?.builtIn),
     );
     element('delete-confirmation').hidden = true;
-    message('');
+    message(null);
     list();
     controls();
     if (creating) name.focus();
@@ -638,6 +638,7 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
       );
       renderPresetCopy();
       renderDeleteNote();
+      refreshStatuses(root);
     }
     if (firstRender) showSection(state.settingsSection);
     else if (languageChanged) showSection(activeSection);
@@ -720,29 +721,29 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
   async function run(
     action: () => Promise<Result<AppState>>,
     success?: (state: AppState) => void,
-    successMessage = '',
+    successKey = '',
     output = feedback,
   ) {
     if (busy) return;
-    const report = (text: string, failure = false) => {
-      output.textContent = text;
-      output.classList.toggle('error', failure);
-    };
+    const report = (build: (() => string) | null, failure = false) =>
+      setStatus(output, build, failure);
     busy = true;
     controls();
-    report(t('common.working'));
+    report(() => t('common.working'));
     try {
       const result = await action();
-      if (result.ok === false) report(locale.error(result.error), true);
-      else {
+      if (result.ok === false) {
+        const detail = result.error;
+        report(() => locale.error(detail), true);
+      } else {
         render(result.value);
         success?.(result.value);
-        if (successMessage && result.value.error) {
-          report(t('common.savedReloadFailed'), true);
-        } else report(successMessage);
+        if (successKey && result.value.error) {
+          report(() => t('common.savedReloadFailed'), true);
+        } else report(successKey ? () => t(successKey) : null);
       }
     } catch {
-      report(t('common.formKept'), true);
+      report(() => t('common.formKept'), true);
     } finally {
       busy = false;
       controls();
@@ -755,7 +756,7 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
     run(
       () => window.tubevra.updateUserAgents(command),
       success,
-      t('common.saved'),
+      'common.saved',
     );
   language.addEventListener('change', async () => {
     const next = language.value;
@@ -771,16 +772,18 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
     busy = true;
     controls();
     language.value = next;
-    output.textContent = '';
+    setStatus(output, null);
     try {
       const result = await window.tubevra.setLanguage(next);
       if (result.ok) render(result.value);
-      else
-        output.textContent = t('settings.general.languageSaveErrorDetail', {
-          detail: result.error,
-        });
+      else {
+        const detail = result.error;
+        setStatus(output, () =>
+          t('settings.general.languageSaveErrorDetail', { detail }),
+        );
+      }
     } catch {
-      output.textContent = t('settings.general.languageSaveError');
+      setStatus(output, () => t('settings.general.languageSaveError'));
     } finally {
       busy = false;
       controls();
@@ -818,24 +821,30 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
   );
   element('project-github').addEventListener('click', async (event) => {
     event.preventDefault();
-    element('about-feedback').textContent = '';
+    const output = element('about-feedback');
+    setStatus(output, null);
     try {
       const result = await window.tubevra.openProjectGitHub();
-      if (!result.ok)
-        element('about-feedback').textContent = locale.error(result.error);
+      if (!result.ok) {
+        const detail = result.error;
+        setStatus(output, () => locale.error(detail));
+      }
     } catch {
-      element('about-feedback').textContent = t('common.communicationError');
+      setStatus(output, () => t('common.communicationError'));
     }
   });
   element('privacy-policy').addEventListener('click', async (event) => {
     event.preventDefault();
-    element('about-feedback').textContent = '';
+    const output = element('about-feedback');
+    setStatus(output, null);
     try {
       const result = await window.tubevra.openPrivacyPolicy();
-      if (!result.ok)
-        element('about-feedback').textContent = locale.error(result.error);
+      if (!result.ok) {
+        const detail = result.error;
+        setStatus(output, () => locale.error(detail));
+      }
     } catch {
-      element('about-feedback').textContent = t('common.communicationError');
+      setStatus(output, () => t('common.communicationError'));
     }
   });
   element('reload-home').addEventListener('click', () => {
@@ -879,7 +888,7 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
   });
   form.addEventListener('input', () => {
     dirty = true;
-    message(t('presets.dirty'));
+    message(() => t('presets.dirty'));
     controls();
   });
   form.addEventListener('submit', (event) => {
