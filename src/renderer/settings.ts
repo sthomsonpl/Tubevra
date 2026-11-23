@@ -5,6 +5,7 @@ import type {
   UserAgentCommand,
 } from '../shared/api';
 import { PROJECT_GITHUB_URL, PRIVACY_POLICY_URL } from '../shared/api';
+import { hasCobaltUserAgent } from '../shared/media-capabilities';
 import { mountExtensions } from './extensions/settings';
 import { createWidgetToggle } from './widgets';
 import { mountCodecSettings } from './codec-settings';
@@ -653,7 +654,14 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
       ? locale.error(state.error)
       : t(state.loading ? 'connection.connecting' : 'connection.ready');
     element<HTMLButtonElement>('retry').disabled = state.loading || busy;
-    const forceCodecs = state.general.codecPreferences.mode === 'force';
+    // Codec preferences are applied only with a Cobalt user agent.
+    const activeUserAgent = state.userAgents.presets.find(
+      (preset) => preset.id === state.userAgents.activeId,
+    )?.userAgent;
+    const forceCodecs =
+      state.general.codecPreferences.mode === 'force' &&
+      !!activeUserAgent &&
+      hasCobaltUserAgent(activeUserAgent);
     const serviceMessage = element('service-error');
     const isVisible = Boolean(state.error || state.codecWarning || forceCodecs);
     serviceMessage.hidden = !isVisible;
@@ -675,19 +683,17 @@ export function mountSettings(root: HTMLElement, locale: Localization) {
         if (bannerTitle)
           bannerTitle.textContent = t('connection.applicationError');
         if (bannerDesc) bannerDesc.textContent = state.error;
-      } else if (forceCodecs) {
-        if (bannerTitle) bannerTitle.textContent = t('codecs.forceWarning');
-        if (bannerDesc)
-          bannerDesc.textContent = t('codecs.forceWarningDescription');
-      } else {
+      } else if (state.codecWarning) {
         if (bannerTitle)
           bannerTitle.textContent = t('codecs.compatibilityWarning');
         if (bannerDesc)
           bannerDesc.textContent =
             t('codecs.compatibilityDescription') +
-            (state.codecWarning
-              ? ` ${t(`codecs.warning.${state.codecWarning.reason}`, { detail: state.codecWarning.detail })}`
-              : '');
+            ` ${t(`codecs.warning.${state.codecWarning.reason}`, { detail: state.codecWarning.detail })}`;
+      } else {
+        if (bannerTitle) bannerTitle.textContent = t('codecs.forceWarning');
+        if (bannerDesc)
+          bannerDesc.textContent = t('codecs.forceWarningDescription');
       }
     }
     element('loading-note').textContent = state.loading

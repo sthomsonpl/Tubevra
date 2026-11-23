@@ -443,6 +443,26 @@ app
       await ui('document.querySelector("#service-error").textContent'),
       /lack hardware acceleration.*stutter.*CPU/,
     );
+    // Codec preferences are not applied without a Cobalt UA, so no banner.
+    const cobaltPresetId = (
+      await shell.executeJavaScript('window.tubevra.getState()')
+    ).value.userAgents.activeId;
+    await shell.executeJavaScript(
+      "window.tubevra.updateUserAgents({type:'select',id:'lg_webos'})",
+    );
+    await waitUntil(
+      async () =>
+        await ui('document.querySelector("#service-error").hidden'),
+      'force banner hidden for non-Cobalt UA',
+    );
+    await shell.executeJavaScript(
+      `window.tubevra.updateUserAgents({type:'select',id:${JSON.stringify(cobaltPresetId)}})`,
+    );
+    await waitUntil(
+      async () =>
+        !(await ui('document.querySelector("#service-error").hidden')),
+      'force banner restored for Cobalt UA',
+    );
     mainWindow.setSize(640, 680);
     mainWindow.setAlwaysOnTop(true);
     mainWindow.show();
