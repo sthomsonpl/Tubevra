@@ -14,6 +14,8 @@ Obecnie aplikacja obsługuje **TV Mode**. W przyszłości planowany jest równie
 - **SponsorBlock** — automatycznie pomija segmenty sponsorowane w YouTube TV; domyślnie wyłączony. Korzysta z danych [SponsorBlock](https://sponsor.ajay.app/).
 
 - **Return YouTube Dislike** — szacunkowe liczby Like/Dislike w lokalnym panelu TV; domyślnie wyłączony. [Źródło danych](https://returnyoutubedislike.com/).
+- **Wymuszanie rozdzielczości** — zgłoś YouTube TV ekran o rozdzielczości 1440p, 4K lub 8K, aby wyższe jakości mogły pojawić się w odtwarzaczu, jeśli film je oferuje.
+- **YouTube Quality Remover** — usuń wybrane rozdzielczości (144p, 240p, 360p lub 480p) z menu odtwarzacza i trybu Auto. Rozszerzenie jest domyślnie wyłączone.
 
 ## Uruchamianie
 

@@ -14,6 +14,8 @@ Currently, the application supports **TV Mode**. An additional **Desktop Mode**,
 - **SponsorBlock** — automatically skips sponsor segments in YouTube TV; disabled by default. Uses SponsorBlock data from [https://sponsor.ajay.app/](https://sponsor.ajay.app/).
 
 - **Return YouTube Dislike** — estimated likes/dislikes in a local TV panel; disabled by default. [Data source](https://returnyoutubedislike.com/).
+- **Force playback resolution** — report a 1440p, 4K or 8K display to YouTube TV so higher quality options can appear when available.
+- **YouTube Quality Remover** — remove selected resolutions (144p, 240p, 360p or 480p) from the player menu and the Auto selection. Disabled by default.
 
 ## Run
 
