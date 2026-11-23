@@ -51,8 +51,8 @@ WebContents, main frame and exact URL. Closing the window closes this view too.
 ## Settings behaviour
 
 Choose **Auto (system)**, **English**, or **Polski** under **Settings → General → Language**.
-Auto uses Polish when it is the first preferred system language and English
-otherwise. In the Polish interface, the option is labeled **Auto**. Tubevra
+Auto uses the first supported language from your system's preferred languages
+(English or Polish) and English when none is supported. In the Polish interface, the option is labeled **Auto**. Tubevra
 applies the change immediately and keeps the current YouTube TV session open.
 It remembers your choice and checks the system language again at the next launch.
 Language detection and translations work offline.

@@ -296,12 +296,15 @@ test('a failed general settings write preserves the running preference and recov
   );
 });
 
-test('automatic language uses only the first preferred system language and falls back to English', (t) => {
+test('automatic language uses the first supported preferred system language and falls back to English', (t) => {
   for (const [preferred, expected] of [
     [['pl'], 'pl'],
     [['PL-pl', 'en-US'], 'pl'],
     [['en-US', 'pl-PL'], 'en'],
-    [['de-DE', 'pl-PL'], 'en'],
+    [['de-DE', 'pl-PL'], 'pl'],
+    [['de-DE', 'fr-FR'], 'en'],
+    [['C', 'pl_PL.UTF-8'], 'pl'],
+    [['plx_PL', 'pl'], 'pl'],
     [['pl_PL'], 'pl'],
     [['pl_PL.UTF-8', 'en_US.UTF-8'], 'pl'],
     [['pl@euro'], 'pl'],

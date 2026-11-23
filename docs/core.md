@@ -90,10 +90,10 @@ prevent the tests from running; it must not be worked around in application code
 
 Tubevra saves the language preference (`auto`, `en`, or `pl`) with its general
 settings. New profiles and settings files without a language preference use
-`auto`. At startup, the main process reads the first preferred system language
-through Electron. Auto uses Polish for `pl` and regional variants such as
-`pl-PL`, and English for other languages or when the system language is
-unavailable. An explicit language choice takes precedence. If saving fails,
+`auto`. At startup, the main process reads the preferred system languages
+through Electron. Auto uses the first one that Tubevra supports (English or
+Polish, including regional variants such as `pl-PL`), and English when none
+is supported or the system language is unavailable. An explicit language choice takes precedence. If saving fails,
 Tubevra keeps the previous preference and interface language.
 
 ## Playback resolution
