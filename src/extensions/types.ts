@@ -78,7 +78,7 @@ export interface PageConfiguration {
   document: string;
   revision: number;
   items: { id: string; enabled: boolean }[];
-  hooks?: { id: string; enabled: boolean }[];
+  hooks?: { id: string; enabled: boolean; options?: unknown }[];
 }
 export interface PageReport {
   diagnostics?: ExtensionDiagnostics;
@@ -96,6 +96,7 @@ export interface PageReport {
 // async functions; the runtime must also check results from untyped modules.
 export type HookCleanup = () => undefined;
 export interface HookExtensionContext {
+  onJsonParsed(callback: (result: unknown) => void): void;
   onCleanup(cleanup: HookCleanup): void;
   reportError(message: string): void;
   requireReload(reason: string): void;
@@ -110,7 +111,10 @@ export interface HookExtensionContext {
     ) => unknown,
   ): void;
 }
-export type HookExtensionStart = (context: HookExtensionContext) => HookCleanup;
+export type HookExtensionStart = (
+  context: HookExtensionContext,
+  options?: unknown,
+) => HookCleanup;
 
 // All cross-world payloads are bounded, validated diagnostic data. They confer
 // no authority to change configuration or issue application commands.

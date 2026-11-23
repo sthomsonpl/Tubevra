@@ -670,7 +670,7 @@ app
       (
         await shell.executeJavaScript('window.tubevra.getExtensions()')
       ).value.items.map((item) => item.id),
-      ['adblock', 'sponsorblock', 'return-youtube-dislike'],
+      ['adblock', 'sponsorblock', 'return-youtube-dislike', 'quality-removal'],
     );
     await shell.executeJavaScript(
       `document.querySelector('[data-section="user-agents"]').click()`,

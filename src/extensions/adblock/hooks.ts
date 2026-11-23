@@ -4,9 +4,7 @@ import { inspectFeedAds } from './feed';
 
 export const start: HookExtensionStart = (context) => {
   let changed = false;
-  context.wrap(JSON, 'parse', (original, receiver, args) => {
-    const result: unknown = Reflect.apply(original, receiver, args);
-    if (context.signal.aborted) return result;
+  context.onJsonParsed((result) => {
     const plan = inspectPlayerAds(result);
     const feed = inspectFeedAds(result);
     const error =
@@ -17,7 +15,7 @@ export const start: HookExtensionStart = (context) => {
           : undefined;
     if (error) {
       context.reportError(error);
-      return result;
+      return;
     }
     // Validate both response types before applying any changes.
     if (plan && 'fields' in plan)
@@ -41,8 +39,6 @@ export const start: HookExtensionStart = (context) => {
         );
       }
     }
-    return result;
   });
-  // context.wrap owns synchronous restoration and disables retained wrappers.
   return () => undefined;
 };

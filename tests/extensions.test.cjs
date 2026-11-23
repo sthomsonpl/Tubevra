@@ -74,7 +74,13 @@ test('Adblock registration preserves existing preferences and persists explicit 
   assert.equal(item.hooks, true);
   assert.equal(item.main, false);
   assert.equal(item.page, false);
-  assert.deepEqual(hookManifest, ['adblock']);
+  assert.deepEqual(hookManifest, ['adblock', 'quality-removal']);
+  const quality = engine
+    .snapshot()
+    .items.find((item) => item.id === 'quality-removal');
+  assert.equal(quality.enabled, false);
+  assert.deepEqual(quality.modes, ['tv']);
+  assert.equal(quality.hooks, true);
   const sponsor = engine
     .snapshot()
     .items.find((item) => item.id === 'sponsorblock');
