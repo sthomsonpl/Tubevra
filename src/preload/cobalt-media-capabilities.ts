@@ -47,7 +47,10 @@ export function overrideCobaltMediaCapabilities(
       ? null
       : new Set(hardwareProfiles);
   let warning: string | null = null;
-  const unknownProfile = () => {
+  // Only meaningful when Chromium accepted the query: a native rejection is
+  // already final, so there is nothing to warn about.
+  const unknownProfile = (supported: boolean) => {
+    if (!supported) return;
     warning ??=
       'Unrecognized video codec profile; native codec support is used for that query.';
   };
@@ -196,7 +199,7 @@ export function overrideCobaltMediaCapabilities(
       )
         return supported;
       if (codecFields !== 1 || !codecs) {
-        unknownProfile();
+        unknownProfile(supported);
         return supported;
       }
       const codecList = codecs.split(',').map((value) => value.trim());
@@ -216,7 +219,7 @@ export function overrideCobaltMediaCapabilities(
         if (!/^(?:vp9|vp09|av01|avc1|avc3)(?:\.|$)/i.test(codec)) continue;
         const profile = profileFor(codec);
         if (!profile) {
-          unknownProfile();
+          unknownProfile(supported);
           continue;
         }
         if (hardware && !hardware.has(profile as HardwareVideoProfile))

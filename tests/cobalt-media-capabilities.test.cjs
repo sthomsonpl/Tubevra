@@ -410,6 +410,31 @@ test('unmapped target profiles use native behavior with a diagnostic; other type
   assert.equal(f.control.takeWarning(), null);
 });
 
+test('unrecognized profiles rejected natively raise no diagnostic, accepted ones still do', () => {
+  for (const mode of ['manual', 'force']) {
+    const preferences = { mode, allowedCodecs: ['vp9', 'av1'] };
+    const rejected = fixture(undefined, false, [], preferences, () => false);
+    for (const query of [
+      'video/mp4;codecs="vp09.04.51.08"',
+      'video/mp4;codecs="vp9.2"',
+      'video/mp4;codecs="vp9";codecs="vp9"',
+    ])
+      assert.equal(rejected.check(query), false, `${mode} ${query}`);
+    const unknown = rejected.control.takeWarning();
+    assert.ok(
+      unknown === null || !/Unrecognized video codec profile/.test(unknown),
+      `${mode} ${unknown}`,
+    );
+    const accepted = fixture(undefined, false, [], preferences, () => true);
+    assert.equal(accepted.check('video/mp4;codecs="avc1.ff0033"'), true);
+    assert.match(
+      accepted.control.takeWarning(),
+      /Unrecognized video codec profile/,
+      mode,
+    );
+  }
+});
+
 test('native fallback without hardware data retains supported software formats', () => {
   const f = fixture();
   assert.equal(f.check('video/mp4;codecs="av01.0.13M.08";framerate=60'), true);
