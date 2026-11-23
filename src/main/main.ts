@@ -4,6 +4,26 @@ import { createTVWindow } from './tv-window';
 import { GeneralSettingsStore } from './general-settings-store';
 import { detectSystemLanguage } from './system-language';
 import { createI18n } from '../shared/i18n/i18n';
+import type { Language } from '../shared/i18n/language';
+import en from '../shared/i18n/en.json';
+
+async function showStartupError(
+  titleKey: 'configurationError' | 'couldNotStart',
+  language: Language,
+  cause: unknown,
+): Promise<void> {
+  let title: string = en.startup[titleKey];
+  try {
+    title = (await createI18n(language)).t(`startup.${titleKey}`);
+  } catch (i18nError) {
+    console.error('Failed to localize startup error dialog', i18nError);
+  }
+  dialog.showErrorBox(
+    title,
+    cause instanceof Error ? cause.message : String(cause),
+  );
+  app.quit();
+}
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.sthomsonpl.tubevra');
@@ -37,26 +57,22 @@ if (!app.requestSingleInstanceLock()) {
       if (configurationError) throw configurationError;
       store = await UserAgentStore.open(app.getPath('userData'));
     } catch (cause) {
-      const i18n = await createI18n(
+      await showStartupError(
+        'configurationError',
         general?.snapshot().language ?? systemLanguage,
+        cause,
       );
-      dialog.showErrorBox(
-        i18n.t('startup.configurationError'),
-        cause instanceof Error ? cause.message : String(cause),
-      );
-      app.quit();
       return;
     }
     const startWindow = async () => {
       try {
         await createTVWindow(store, general);
       } catch (cause) {
-        const i18n = await createI18n(general.snapshot().language);
-        dialog.showErrorBox(
-          i18n.t('startup.couldNotStart'),
-          cause instanceof Error ? cause.message : String(cause),
+        await showStartupError(
+          'couldNotStart',
+          general.snapshot().language,
+          cause,
         );
-        app.quit();
       }
     };
     await startWindow();
