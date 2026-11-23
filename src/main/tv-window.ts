@@ -38,6 +38,7 @@ import { connectHardwareCodecs } from './media-capabilities-bridge';
 import {
   hasCobaltUserAgent,
   type CodecBootstrapSnapshot,
+  type CodecPreferences,
 } from '../shared/media-capabilities';
 import { createToolbarAutoHide } from './toolbar-auto-hide';
 import { connectOverlayAnimation } from './overlay-animation';
@@ -193,7 +194,7 @@ export async function createTVWindow(
       savePreference: (value) => extensions.setRydShowWithDock(value),
       getCodecs: () => ({
         preferences: general.snapshot().codecPreferences,
-        reloadRequired: codecReloadRequired,
+        reloadRequired: codecReloadRequired(),
         error,
       }),
       saveCodecs: (value) =>
@@ -303,7 +304,21 @@ export async function createTVWindow(
 
   let error: string | null = null;
   let codecWarning: CodecWarning | null = null;
-  let codecReloadRequired = false;
+  // Policy used by the last successful load; the allowed list matters only
+  // outside Auto.
+  let appliedCodecPolicy: CodecPreferences | undefined;
+  const sameCodecPolicy = (a: CodecPreferences, b: CodecPreferences) =>
+    a.mode === b.mode &&
+    (a.mode === 'auto' ||
+      (a.allowedCodecs.length === b.allowedCodecs.length &&
+        a.allowedCodecs.every((codec) => b.allowedCodecs.includes(codec))));
+  function codecReloadRequired() {
+    return (
+      !!appliedCodecPolicy &&
+      hasCobaltUserAgent(store.activeUserAgent()) &&
+      !sameCodecPolicy(appliedCodecPolicy, general.snapshot().codecPreferences)
+    );
+  }
   let playbackFullscreen = false;
   let settingsOpen = false;
   let loading = true;
@@ -355,7 +370,7 @@ export async function createTVWindow(
     loading,
     error,
     codecWarning,
-    codecReloadRequired,
+    codecReloadRequired: codecReloadRequired(),
   });
   const publish = () => {
     if (!mainWindow.isDestroyed()) {
@@ -584,7 +599,7 @@ export async function createTVWindow(
       if (revision !== loadRevision) return;
       if (mainWindow.isDestroyed()) return;
       loading = false;
-      codecReloadRequired = false;
+      appliedCodecPolicy = codecBootstrap?.preferences;
       syncVisibility();
       if (!settingsOpen) contents.focus();
       publish();
@@ -774,15 +789,7 @@ export async function createTVWindow(
     const previous = general.snapshot().codecPreferences;
     await general.setCodecPreferences(value);
     const next = general.snapshot().codecPreferences;
-    const changed =
-      previous.mode !== next.mode ||
-      (next.mode !== 'auto' &&
-        (previous.allowedCodecs.length !== next.allowedCodecs.length ||
-          previous.allowedCodecs.some(
-            (codec) => !next.allowedCodecs.includes(codec),
-          )));
-    if (changed && hasCobaltUserAgent(store.activeUserAgent()))
-      codecReloadRequired = true;
+    const changed = !sameCodecPolicy(previous, next);
     publish();
     if (!changed || !hasCobaltUserAgent(store.activeUserAgent())) return;
     const url = currentTVURL();
@@ -794,7 +801,7 @@ export async function createTVWindow(
       await action();
       return {
         preferences: general.snapshot().codecPreferences,
-        reloadRequired: codecReloadRequired,
+        reloadRequired: codecReloadRequired(),
         error,
       };
     });

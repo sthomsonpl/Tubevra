@@ -727,6 +727,21 @@ app
         .codecReloadRequired,
       false,
     );
+    // The flag follows the loaded document: reverting to its policy clears it
+    // even when the reload itself fails.
+    const stateOf = async () =>
+      (await shell.executeJavaScript('window.tubevra.getState()')).value;
+    tv.reload = () => {
+      throw Error('Forced codec reload failure');
+    };
+    assert.equal((await set('force', ['av1'])).ok, false);
+    assert.equal((await stateOf()).codecReloadRequired, true);
+    assert.equal((await set('force', ['av1'])).ok, true);
+    assert.equal((await stateOf()).codecReloadRequired, true);
+    assert.equal((await set('manual', ['vp9'])).ok, false);
+    assert.equal((await stateOf()).codecReloadRequired, false);
+    tv.reload = reload;
+    await shell.executeJavaScript('window.tubevra.reloadTV()');
     // A non-Cobalt document retains native behavior even with a manual block list.
     await shell.executeJavaScript(
       "window.tubevra.updateUserAgents({type:'select',id:'lg_webos'})",
