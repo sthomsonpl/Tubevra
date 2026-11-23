@@ -14,7 +14,11 @@ import { qualityRemovalId } from './quality-removal/quality-removal';
 import { RequestDispatcher } from './main/request-dispatcher';
 import type { RequestSource } from './main/request-dispatcher';
 
+const qualityChangedReason = 'Quality settings changed.';
+
 export class TubervaExtensions {
+  // Selection the running quality filter started with, while a change waits for a reload.
+  private qualityBaseline: number[] | null = null;
   private pending: Promise<unknown> = Promise.resolve();
   private items: ExtensionState[];
   private resources = new Map<string, Cleanup[]>();
@@ -164,7 +168,17 @@ export class TubervaExtensions {
         before.join() !== after.join()
       ) {
         item.reloadRequired = true;
-        item.reloadReason = 'Quality settings changed.';
+        item.reloadReason = qualityChangedReason;
+        this.qualityBaseline = before;
+      } else if (
+        item?.reloadRequired &&
+        item.reloadReason === qualityChangedReason &&
+        this.qualityBaseline?.join() === after.join()
+      ) {
+        // Reverted to the selection the running filter started with.
+        item.reloadRequired = false;
+        item.reloadReason = null;
+        this.qualityBaseline = null;
       }
       this.publishState();
       return this.snapshot();
@@ -347,6 +361,7 @@ export class TubervaExtensions {
     this.advanceRevision();
     this.confirmations.clear();
     this.runtimeError = null;
+    this.qualityBaseline = null;
     for (const item of this.items) {
       if (item.diagnostics) delete item.diagnostics.page;
       if (!item.page && !item.hooks) continue;

@@ -782,6 +782,23 @@ test('quality removal options reach the hook bootstrap and changes require a rel
   assert.match(changed.items[0].reloadReason, /Quality settings changed/);
   assert.equal(changed.revision, saved.revision + 1);
   assert.deepEqual(read().options, [144]);
+  // Reverting to the selection the running filter started with needs no reload.
+  const reverted = await engine.setQualityRemoval([240, 360]);
+  assert.equal(reverted.items[0].reloadRequired, false);
+  assert.equal(reverted.items[0].reloadReason, null);
+  assert.equal(
+    (await engine.setQualityRemoval([144])).items[0].reloadRequired,
+    true,
+  );
+  // A different selection keeps the reload pending.
+  assert.equal(
+    (await engine.setQualityRemoval([480])).items[0].reloadRequired,
+    true,
+  );
+  assert.equal(
+    (await engine.setQualityRemoval([144])).items[0].reloadRequired,
+    true,
+  );
   // A new document clears the flag and keeps the saved selection.
   engine.resetPage();
   assert.equal(engine.snapshot().items[0].reloadRequired, false);
