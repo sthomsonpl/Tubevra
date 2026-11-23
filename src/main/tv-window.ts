@@ -201,8 +201,7 @@ export async function createTVWindow(
         queueCodecChange(() => applyCodecPreferences(value)),
       reloadCodecs: () =>
         queueCodecChange(async () => {
-          const url = currentTVURL();
-          await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
+          await loadCurrentTV();
         }),
       getQuality: () => extensions.snapshot().qualityRemoval.hidden,
       saveQuality: (hidden) => extensions.setQualityRemoval(hidden),
@@ -611,6 +610,13 @@ export async function createTVWindow(
       throw new Error(message);
     }
   };
+  // Reloads the current Leanback route, or opens TV_HOME when it is not Leanback.
+  // reload=false forces a fresh navigation (e.g. so a new User-Agent applies).
+  const loadCurrentTV = (reload = true) => {
+    const url = currentTVURL();
+    const leanback = isTVURL(url);
+    return loadTV(leanback ? url : TV_HOME, reload && leanback);
+  };
 
   // Keep persistence and navigation in one queue: concurrent IPC must not apply
   // an older UA after a newer selection has already been saved.
@@ -782,8 +788,7 @@ export async function createTVWindow(
     publish();
     if (resolution === previous) return;
     displayBridge.update(resolveTVDisplay(display, resolution));
-    const url = currentTVURL();
-    await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
+    await loadCurrentTV();
   });
   async function applyCodecPreferences(value: unknown) {
     const previous = general.snapshot().codecPreferences;
@@ -792,8 +797,7 @@ export async function createTVWindow(
     const changed = !sameCodecPolicy(previous, next);
     publish();
     if (!changed || !hasCobaltUserAgent(store.activeUserAgent())) return;
-    const url = currentTVURL();
-    await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
+    await loadCurrentTV();
   }
   function queueCodecChange(action: () => Promise<void>) {
     const operation = pending.then(async () => {
@@ -827,8 +831,7 @@ export async function createTVWindow(
   });
   handle(IPC.reloadTV, async (...args) => {
     if (args.length) throw new Error('Unexpected arguments.');
-    const url = currentTVURL();
-    await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
+    await loadCurrentTV();
   });
   ipcMain.handle(IPC.setSettingsOpen, (event, ...args): Result<AppState> => {
     assertShell(event);
@@ -873,8 +876,7 @@ export async function createTVWindow(
       contents.setUserAgent(current);
       // Explicit UA for the current Leanback route; preserve cookies/session.
       try {
-        const url = currentTVURL();
-        await loadTV(isTVURL(url) ? url : TV_HOME);
+        await loadCurrentTV(false);
       } catch {
         // The configuration is committed. loadTV publishes the load error;
         // return the saved state so the editor can finish this mutation.
