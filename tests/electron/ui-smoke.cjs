@@ -386,15 +386,17 @@ app
         'Return YouTube Dislike',
       ],
       ['#codec-settings', 'codecSettings', "'codecs'", 'Kodeki wideo'],
+      [
+        '#quality-removal-settings',
+        'qualityRemovalSettings',
+        "'quality-removal'",
+        'YouTube Quality Remover',
+      ],
     ]) {
-      assert.equal(
-        (
-          await shell.executeJavaScript(
-            `window.extensionSettingsHost.open(${kind})`,
-          )
-        ).ok,
-        true,
+      const opened = await shell.executeJavaScript(
+        `window.extensionSettingsHost.open(${kind})`,
       );
+      assert.equal(opened.ok, true, `${hash}: ${JSON.stringify(opened)}`);
       const options = webContents
         .getAllWebContents()
         .find((entry) => entry.getURL().endsWith(hash));
@@ -433,6 +435,82 @@ app
         /Untrusted/,
       );
     }
+    // Quality Remover: Cancel discards a draft, Save stores a validated selection.
+    const openQuality = async () => {
+      assert.equal(
+        (
+          await shell.executeJavaScript(
+            "window.extensionSettingsHost.open('quality-removal')",
+          )
+        ).ok,
+        true,
+      );
+      const options = webContents
+        .getAllWebContents()
+        .find((entry) => entry.getURL().endsWith('#quality-removal-settings'));
+      assert.ok(options);
+      await waitFor(
+        () =>
+          options.executeJavaScript(
+            "Boolean(document.querySelector('dialog[open] .primary:enabled'))",
+          ),
+        'quality options ready',
+      );
+      return options;
+    };
+    const closeQuality = async (options, button) => {
+      await options.executeJavaScript(
+        `document.querySelector('${button}').click()`,
+      );
+      await waitFor(
+        () =>
+          options.executeJavaScript("!document.querySelector('dialog').open"),
+        'quality options close',
+      );
+    };
+    const qualityChecks = (options) =>
+      options.executeJavaScript(
+        "['144', '240', '360', '480'].map((p) => document.getElementById('quality-' + p).checked)",
+      );
+    const savedQuality = async () =>
+      (await shell.executeJavaScript('window.tubevra.getExtensions()')).value
+        .qualityRemoval.hidden;
+    let quality = await openQuality();
+    assert.deepEqual(await qualityChecks(quality), [
+      false,
+      false,
+      false,
+      false,
+    ]);
+    await quality.executeJavaScript(
+      "document.getElementById('quality-240').click()",
+    );
+    await closeQuality(quality, '.ui-button--cancel');
+    assert.deepEqual(await savedQuality(), []);
+    quality = await openQuality();
+    assert.deepEqual(await qualityChecks(quality), [
+      false,
+      false,
+      false,
+      false,
+    ]);
+    await quality.executeJavaScript(
+      "document.getElementById('quality-240').click(); document.getElementById('quality-480').click()",
+    );
+    await closeQuality(quality, '.primary');
+    assert.deepEqual(await savedQuality(), [240, 480]);
+    quality = await openQuality();
+    assert.deepEqual(await qualityChecks(quality), [false, true, false, true]);
+    await closeQuality(quality, '.ui-button--cancel');
+    assert.equal(
+      (
+        await shell.executeJavaScript(
+          'window.tubevra.setExtensionEnabled({ id: "quality-removal", enabled: false })',
+        )
+      ).ok,
+      true,
+    );
+    assert.deepEqual(await savedQuality(), [240, 480]);
     assert.equal(
       (await toolbar.executeJavaScript('window.tubevra.toggleFullscreen()')).ok,
       true,

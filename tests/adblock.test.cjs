@@ -580,7 +580,11 @@ test('quality removal filters both format lists and retains SABR, audio, and oth
         ),
       },
     });
-    assert.match(r.control.drain().at(-1).reloadReason, /changed player data/);
+    // The filter stays active after changing data, so no reload is requested.
+    assert.equal(
+      r.control.drain().some((report) => report.reloadReason),
+      false,
+    );
     r.control.dispose();
   }
 });
@@ -632,4 +636,29 @@ test('both filters share one parser call and clean up independently', () => {
     assert.deepEqual(r.parse(input), input);
     r.control.dispose();
   }
+});
+
+test('quality removal rejects invalid or missing options and leaves parsing untouched', () => {
+  for (const hidden of [[720], [240, 240], '240', [144, 240, 360, 480, 144]]) {
+    const r = runtime({ hidden });
+    const report = r.control
+      .drain()
+      .findLast(({ id }) => id === 'quality-removal');
+    assert.equal(report.status, 'error');
+    assert.match(report.error, /invalid hidden resolutions/);
+    const input = player({ streamingData: stream });
+    assert.deepEqual(r.parse(input), input);
+    r.control.dispose();
+  }
+  const r = runtime();
+  r.realm.initial.hooks = [
+    { id: 'adblock', enabled: false },
+    { id: 'quality-removal', enabled: true },
+  ];
+  const missing = r.run(`(${factory})(initial)`);
+  const report = missing.drain().findLast(({ id }) => id === 'quality-removal');
+  assert.equal(report.status, 'error');
+  assert.match(report.error, /invalid hidden resolutions/);
+  missing.dispose();
+  r.control.dispose();
 });

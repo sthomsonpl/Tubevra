@@ -13,10 +13,12 @@ export const EXTENSION_SETTINGS_IPC = Object.freeze({
   getCodecs: 'tubevra:options:codecs:get',
   saveCodecs: 'tubevra:options:codecs:save',
   reloadCodecs: 'tubevra:options:codecs:reload',
+  getQuality: 'tubevra:options:quality-removal:get',
+  saveQuality: 'tubevra:options:quality-removal:save',
 });
 
 export interface ExtensionSettingsHostAPI {
-  open(kind?: 'codecs'): Promise<Result<null>>;
+  open(kind?: 'codecs' | 'quality-removal'): Promise<Result<null>>;
   close(): Promise<Result<null>>;
   onClosed(listener: (error?: string) => void): () => void;
 }
@@ -32,6 +34,14 @@ export interface CodecSettingsAPI {
   get(): Promise<Result<CodecSettingsState>>;
   save(value: CodecPreferences): Promise<Result<CodecSettingsState>>;
   reload(): Promise<Result<CodecSettingsState>>;
+  close(): Promise<Result<null>>;
+  resize(height: number): Promise<Result<null>>;
+}
+
+export interface QualityRemovalSettingsAPI {
+  getLanguage(): Promise<Language>;
+  get(): Promise<Result<number[]>>;
+  save(hidden: number[]): Promise<Result<null>>;
   close(): Promise<Result<null>>;
   resize(height: number): Promise<Result<null>>;
 }

@@ -7,6 +7,7 @@ import {
   type SponsorAvailability,
 } from '../../extensions/sponsorblock/diagnostics';
 import type { SponsorPlayback } from '../../extensions/sponsorblock/player';
+import { qualityRemovalName } from '../../extensions/quality-removal/quality-removal';
 import type { Localization } from '../localization';
 
 export function mountExtensions(root: HTMLElement, locale: Localization) {
@@ -33,6 +34,12 @@ export function mountExtensions(root: HTMLElement, locale: Localization) {
   rydButton.className = 'ui-button secondary compact-btn';
   rydButton.dataset.controlId = 'ryd-settings';
   rydButton.setAttribute('aria-haspopup', 'dialog');
+  const qualityButton = document.createElement('button');
+  qualityButton.type = 'button';
+  qualityButton.className = 'ui-button secondary compact-btn';
+  qualityButton.dataset.controlId = 'quality-removal-settings';
+  qualityButton.setAttribute('aria-haspopup', 'dialog');
+  let opener = rydButton;
   const blocker = document.createElement('dialog');
   blocker.className = 'extension-settings-blocker';
   root.append(blocker);
@@ -44,7 +51,17 @@ export function mountExtensions(root: HTMLElement, locale: Localization) {
       'aria-label',
       t('common.settingsFor', { name: 'Return YouTube Dislike' }),
     );
-    blocker.setAttribute('aria-label', t('addons.ryd.settings'));
+    qualityButton.textContent = t('common.settings');
+    qualityButton.setAttribute(
+      'aria-label',
+      t('common.settingsFor', { name: qualityRemovalName }),
+    );
+    blocker.setAttribute(
+      'aria-label',
+      opener === qualityButton
+        ? t('addons.qualityRemoval.settings')
+        : t('addons.ryd.settings'),
+    );
   }
   translateControls();
   window.extensionSettingsHost.onClosed((error) => {
@@ -54,7 +71,7 @@ export function mountExtensions(root: HTMLElement, locale: Localization) {
       operationError = error;
       if (current) render(current);
     }
-    rydButton.focus({ preventScroll: true });
+    opener.focus({ preventScroll: true });
   });
   blocker.addEventListener('cancel', (event) => {
     event.preventDefault();
@@ -71,10 +88,17 @@ export function mountExtensions(root: HTMLElement, locale: Localization) {
         if (current) render(current);
       });
   });
-  rydButton.addEventListener('click', async () => {
+  async function openOptions(
+    button: HTMLButtonElement,
+    kind?: 'quality-removal',
+  ) {
+    opener = button;
+    translateControls();
     blocker.showModal();
     try {
-      const result = await window.extensionSettingsHost.open();
+      const result = await (kind
+        ? window.extensionSettingsHost.open(kind)
+        : window.extensionSettingsHost.open());
       if (!result.ok) {
         blocker.close();
         operationError = result.error;
@@ -85,7 +109,12 @@ export function mountExtensions(root: HTMLElement, locale: Localization) {
       operationError = null;
       render(current!);
     }
-  });
+  }
+  rydButton.addEventListener('click', () => void openOptions(rydButton));
+  qualityButton.addEventListener(
+    'click',
+    () => void openOptions(qualityButton, 'quality-removal'),
+  );
   const labels = {
     disabled: 'addons.status.disabled',
     starting: 'addons.status.starting',
@@ -172,6 +201,15 @@ export function mountExtensions(root: HTMLElement, locale: Localization) {
       ]
         .filter(Boolean)
         .join(': ');
+      // Quality Remover shows only its state: active, reload required, etc.
+      if (item.id === 'quality-removal' && !item.error)
+        status.textContent = t('addons.runtime', {
+          status: t(
+            item.reloadRequired
+              ? 'addons.status.reloadRequired'
+              : labels[item.status],
+          ),
+        });
       if (
         item.id === 'sponsorblock' &&
         item.enabled &&
@@ -290,6 +328,12 @@ export function mountExtensions(root: HTMLElement, locale: Localization) {
         rydButton.disabled = busy;
         row.append(rydButton);
         if (focusedId === 'ryd-settings' && !busy) restoreFocus = rydButton;
+      }
+      if (item.id === 'quality-removal') {
+        qualityButton.disabled = busy;
+        row.append(qualityButton);
+        if (focusedId === 'quality-removal-settings' && !busy)
+          restoreFocus = qualityButton;
       }
       row.append(label);
       list.append(row);

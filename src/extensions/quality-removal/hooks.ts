@@ -1,7 +1,6 @@
 import type { HookExtensionStart } from '../types';
-import { qualityRemovalName } from './quality-removal';
+import { parseHiddenQualities, qualityRemovalName } from './quality-removal';
 
-const resolutions: readonly number[] = [144, 240, 360, 480];
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -48,17 +47,14 @@ function inspectPlayer(value: unknown, hidden: ReadonlySet<number>) {
 }
 
 export const start: HookExtensionStart = (context, options) => {
-  if (options === undefined) return () => undefined;
-  if (
-    !Array.isArray(options) ||
-    options.length > resolutions.length ||
-    [...options].some((value) => !resolutions.includes(value)) ||
-    new Set(options).size !== options.length
-  )
+  let hiddenQualities: number[];
+  try {
+    hiddenQualities = parseHiddenQualities(options);
+  } catch {
     throw Error(`${qualityRemovalName}: invalid hidden resolutions.`);
-  if (!options.length) return () => undefined;
-  const hidden = new Set<number>(options);
-  let changed = false;
+  }
+  if (!hiddenQualities.length) return () => undefined;
+  const hidden = new Set<number>(hiddenQualities);
   context.onJsonParsed((result) => {
     try {
       const plan = inspectPlayer(result, hidden);
@@ -78,13 +74,6 @@ export const start: HookExtensionStart = (context, options) => {
         throw Error('Cannot replace streamingData.');
     } catch (cause) {
       context.reportError(`${qualityRemovalName}: ${String(cause)}`);
-      return;
-    }
-    if (!changed) {
-      changed = true;
-      context.requireReload(
-        `${qualityRemovalName} changed player data; reload to restore original responses.`,
-      );
     }
   });
   return () => undefined;

@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ExtensionCommand, ExtensionMetadata } from '../types';
+import { parseHiddenQualities } from '../quality-removal/quality-removal';
 
 interface Settings {
   version: 1;
   enabled: Record<string, boolean>;
   ryd?: { showWithDock: boolean };
+  qualityRemoval?: { hidden: number[] };
 }
 const validId = (id: unknown): id is string =>
   typeof id === 'string' && /^[a-zA-Z0-9:_-]{1,100}$/.test(id);
@@ -43,7 +45,8 @@ export class ExtensionStore {
       if (
         value.version !== 1 ||
         Object.keys(value).some(
-          (key) => !['version', 'enabled', 'ryd'].includes(key),
+          (key) =>
+            !['version', 'enabled', 'ryd', 'qualityRemoval'].includes(key),
         )
       )
         throw new Error('Unsupported extension configuration.');
@@ -62,7 +65,17 @@ export class ExtensionStore {
         )
           throw new Error('Invalid RYD settings.');
       }
+      let qualityRemoval: { hidden: number[] } | undefined;
+      if (value.qualityRemoval !== undefined) {
+        object(value.qualityRemoval);
+        if (Object.keys(value.qualityRemoval).length !== 1)
+          throw new Error('Invalid quality removal settings.');
+        qualityRemoval = {
+          hidden: parseHiddenQualities(value.qualityRemoval.hidden),
+        };
+      }
       settings = {
+        ...(qualityRemoval ? { qualityRemoval } : {}),
         ...(value.ryd === undefined
           ? {}
           : { ryd: { showWithDock: value.ryd.showWithDock as boolean } }),
@@ -95,6 +108,19 @@ export class ExtensionStore {
       if (typeof value !== 'boolean')
         throw new Error('Expected a RYD visibility flag.');
       const next: Settings = { ...this.settings, ryd: { showWithDock: value } };
+      await this.save(next);
+      this.settings = next;
+    });
+    this.pending = operation.catch(() => {});
+    return operation;
+  }
+  qualityRemovalSettings() {
+    return { hidden: [...(this.settings.qualityRemoval?.hidden ?? [])] };
+  }
+  setQualityRemovalHidden(value: unknown): Promise<void> {
+    const operation = this.pending.then(async () => {
+      const hidden = parseHiddenQualities(value);
+      const next: Settings = { ...this.settings, qualityRemoval: { hidden } };
       await this.save(next);
       this.settings = next;
     });

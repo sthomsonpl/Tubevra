@@ -160,12 +160,14 @@
     "description": {
       "adblock": "Usuwa dane reklamowe z odtwarzacza YouTube TV oraz oznaczone miejsca reklamowe w kanale, w tym banery, wiersze, kolejne partie treści i rekomendacje. Reklamy w Shorts są poza zakresem działania dodatku.",
       "sponsorblock": "Pomija fragmenty sponsorowane w YouTube TV. Pobiera dane o fragmentach z SponsorBlock.",
-      "return-youtube-dislike": "Szacunkowa liczba polubień i ocen negatywnych w panelu ocen obok paska."
+      "return-youtube-dislike": "Szacunkowa liczba polubień i ocen negatywnych w panelu ocen obok paska.",
+      "quality-removal": "Pozwala usunąć wybrane jakości wideo z menu odtwarzacza i trybu Auto."
     },
     "status": {
       "disabled": "Wyłączony",
       "starting": "Uruchamianie…",
       "active": "Aktywny",
+      "reloadRequired": "Przeładuj TV, aby zastosować zmiany",
       "error": "Błąd"
     },
     "runtime": "Stan działania: {{status}}",
@@ -193,6 +195,12 @@
       "notReady": "Oczekiwanie na odtwarzanie…",
       "invalidSegments": "Fragmenty nie pasują do tego filmu",
       "seekFailed": "Pomijanie wstrzymane: nie udało się przewinąć"
+    },
+    "qualityRemoval": {
+      "settings": "Ustawienia YouTube Quality Remover",
+      "description": "Zaznaczone jakości znikną z menu odtwarzacza i trybu Auto.",
+      "lastVariant": "Jeśli miałyby zniknąć wszystkie jakości wideo, nic nie zostanie zmienione.",
+      "reload": "Zastosuje się po przeładowaniu YouTube TV."
     },
     "ryd": {
       "settings": "Ustawienia Return YouTube Dislike",

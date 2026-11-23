@@ -27,6 +27,7 @@ export interface ExtensionState extends ExtensionMetadata {
 }
 export interface ExtensionsState {
   ryd: { showWithDock: boolean };
+  qualityRemoval: { hidden: number[] };
   revision: number;
   stateVersion: number;
   error: string | null;

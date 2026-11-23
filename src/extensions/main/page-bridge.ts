@@ -95,11 +95,17 @@ export function connectPage(
     hooks: engine
       .snapshot()
       .items.filter((item) => item.hooks)
-      .map((item) => ({
-        id: item.id,
-        enabled:
-          item.enabled && item.modes.includes('tv') && item.status !== 'error',
-      })),
+      .map((item) => {
+        const options = engine.hookOptions(item.id);
+        return {
+          id: item.id,
+          enabled:
+            item.enabled &&
+            item.modes.includes('tv') &&
+            item.status !== 'error',
+          ...(options === undefined ? {} : { options }),
+        };
+      }),
     items: engine
       .snapshot()
       .items.filter((item) => item.page)

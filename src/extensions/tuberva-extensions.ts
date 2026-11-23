@@ -10,6 +10,7 @@ import type {
   ExtensionDiagnostics,
 } from './types';
 import { ExtensionStore, parseExtensionCommand } from './main/extension-store';
+import { qualityRemovalId } from './quality-removal/quality-removal';
 import { RequestDispatcher } from './main/request-dispatcher';
 import type { RequestSource } from './main/request-dispatcher';
 
@@ -127,6 +128,7 @@ export class TubervaExtensions {
   snapshot(): ExtensionsState {
     return structuredClone({
       ryd: this.store.rydSettings(),
+      qualityRemoval: this.store.qualityRemovalSettings(),
       revision: this.revision,
       stateVersion: this.stateVersion,
       error: this.runtimeError,
@@ -137,6 +139,33 @@ export class TubervaExtensions {
     return this.enqueue(async () => {
       if (this.closed) throw new Error('Extension engine is closed.');
       await this.store.setRydShowWithDock(value);
+      this.publishState();
+      return this.snapshot();
+    });
+  }
+  /** Per-hook start options, read from committed settings at document start. */
+  hookOptions(id: string): unknown {
+    return id === qualityRemovalId
+      ? this.store.qualityRemovalSettings().hidden
+      : undefined;
+  }
+  setQualityRemoval(value: unknown) {
+    return this.enqueue(async () => {
+      if (this.closed) throw new Error('Extension engine is closed.');
+      const before = this.store.qualityRemovalSettings().hidden;
+      await this.store.setQualityRemovalHidden(value);
+      const after = this.store.qualityRemovalSettings().hidden;
+      const item = this.items.find((item) => item.id === qualityRemovalId);
+      // A running filter keeps the options it started with; only a new document applies the change.
+      if (
+        item?.enabled &&
+        item.status !== 'error' &&
+        !item.reloadRequired &&
+        before.join() !== after.join()
+      ) {
+        item.reloadRequired = true;
+        item.reloadReason = 'Quality settings changed.';
+      }
       this.publishState();
       return this.snapshot();
     });
@@ -155,8 +184,15 @@ export class TubervaExtensions {
       await this.store.update(command);
       this.advanceRevision();
       this.confirmations.clear();
+      const filtering =
+        item.id === qualityRemovalId && item.layers.hooks === 'active';
       item.enabled = command.enabled;
       await this.stop(item);
+      // Responses already filtered stay filtered until a new document loads.
+      if (filtering && !command.enabled && !item.error) {
+        item.reloadRequired = true;
+        item.reloadReason = 'Quality filter disabled.';
+      }
       if (!item.error) await this.apply(item);
       this.publishState();
       return this.snapshot();

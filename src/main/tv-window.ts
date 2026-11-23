@@ -203,6 +203,8 @@ export async function createTVWindow(
           const url = currentTVURL();
           await loadTV(isTVURL(url) ? url : TV_HOME, isTVURL(url));
         }),
+      getQuality: () => extensions.snapshot().qualityRemoval.hidden,
+      saveQuality: (hidden) => extensions.setQualityRemoval(hidden),
       onVisibility: () => overlays.refresh(),
     },
   );

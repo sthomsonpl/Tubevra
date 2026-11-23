@@ -3,6 +3,7 @@ import { mountSettings } from './settings';
 import { mountToolbar } from './toolbar';
 import { mountRatings } from './ratings';
 import { mountRydSettings } from './extensions/ryd-settings';
+import { mountQualityRemovalSettings } from './extensions/quality-removal-settings';
 import { mountCodecOptions } from './codec-options';
 import { createI18n } from '../shared/i18n/i18n';
 import { DEFAULT_LANGUAGE, type Language } from '../shared/i18n/language';
@@ -18,6 +19,8 @@ async function mount() {
       language = await window.extensionSettings.getLanguage();
     else if (route === '#codec-settings')
       language = await window.codecSettings.getLanguage();
+    else if (route === '#quality-removal-settings')
+      language = await window.qualityRemovalSettings.getLanguage();
     else {
       const result = await window.tubevra.getState();
       if (!result.ok) throw new Error(result.error);
@@ -31,6 +34,8 @@ async function mount() {
   else if (route === '#ratings') mountRatings(root, locale);
   else if (route === '#extension-settings') mountRydSettings(root, locale);
   else if (route === '#codec-settings') mountCodecOptions(root, locale);
+  else if (route === '#quality-removal-settings')
+    mountQualityRemovalSettings(root, locale);
   else mountSettings(root, locale);
 }
 

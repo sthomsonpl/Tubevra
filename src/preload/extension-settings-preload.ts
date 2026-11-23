@@ -3,6 +3,7 @@ import {
   EXTENSION_SETTINGS_IPC as IPC,
   type ExtensionSettingsAPI,
   type CodecSettingsAPI,
+  type QualityRemovalSettingsAPI,
 } from '../shared/extension-settings';
 
 const api: ExtensionSettingsAPI = {
@@ -22,3 +23,11 @@ const codecs: CodecSettingsAPI = {
   resize: api.resize,
 };
 contextBridge.exposeInMainWorld('codecSettings', codecs);
+const quality: QualityRemovalSettingsAPI = {
+  getLanguage: api.getLanguage,
+  get: () => ipcRenderer.invoke(IPC.getQuality),
+  save: (hidden) => ipcRenderer.invoke(IPC.saveQuality, hidden),
+  close: api.close,
+  resize: api.resize,
+};
+contextBridge.exposeInMainWorld('qualityRemovalSettings', quality);

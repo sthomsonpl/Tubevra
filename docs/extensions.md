@@ -34,6 +34,10 @@ Enablement is saved in extensions.json, with defaultEnabled used for missing
 preferences. Runtime status, errors and reload requirements are tracked separately.
 Toggling never reloads the document automatically.
 
+A hook can receive start options. The main process adds them to the hook
+configuration of a new document (PageConfiguration.hooks[].options), read from
+committed settings; a running hook keeps the options it started with.
+
 Test modules live in tests/fixtures/extensions/ and use the same build mechanism
 with a separate catalog. Run npm run test:extensions, npm run test:runtime and
 the Electron integration scripts to verify changes.
@@ -80,3 +84,19 @@ and [attribution](../THIRD_PARTY_NOTICES.md).
 Run npm run test:ryd, npm run test:ryd:electron and, after packaging,
 npm run test:ryd:packaged (Windows x64). Fixture tests do not verify live YouTube
 compatibility or physical mouse/IME interactions.
+
+## YouTube Quality Remover
+
+Disabled by default in TV mode. The Settings dialog lists 144p, 240p, 360p and
+480p; checked qualities are removed from `streamingData.formats` and
+`adaptiveFormats` in player responses, so they leave the player menu and the
+qualities Auto can choose. Audio, other qualities and `serverAbrStreamingUrl`
+are kept. If removing the selection would leave no video entry, the original
+lists are kept. Unrecognized player data is reported as an extension error
+without partial edits. The selection is saved in extensions.json
+(`qualityRemoval.hidden`; a missing key means no removed qualities) and applies
+after Reload TV. Disabling the add-on keeps the saved selection. The filter uses
+no external service.
+
+Run `npm run test:adblock` and `npm run test:extensions`. Fixtures do not verify
+live YouTube compatibility.

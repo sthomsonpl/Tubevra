@@ -160,12 +160,14 @@
     "description": {
       "adblock": "Removes YouTube TV player ad data and marked feed ad slots, including banners, rows, continuations and recommendations. Shorts ads are not supported.",
       "sponsorblock": "Skips sponsors in YouTube TV. Fetches segments from SponsorBlock.",
-      "return-youtube-dislike": "Estimated likes and dislikes in the dock ratings panel."
+      "return-youtube-dislike": "Estimated likes and dislikes in the dock ratings panel.",
+      "quality-removal": "Lets you remove chosen video qualities from the player menu and Auto."
     },
     "status": {
       "disabled": "Disabled",
       "starting": "Starting…",
       "active": "Active",
+      "reloadRequired": "Reload TV to apply changes",
       "error": "Error"
     },
     "runtime": "Runtime: {{status}}",
@@ -193,6 +195,12 @@
       "notReady": "Waiting for playback…",
       "invalidSegments": "Segments do not match this video",
       "seekFailed": "Skipping paused: seek failed"
+    },
+    "qualityRemoval": {
+      "settings": "YouTube Quality Remover settings",
+      "description": "Checked qualities will disappear from the player menu and from Auto.",
+      "lastVariant": "If that would remove every video quality, nothing is changed.",
+      "reload": "Applies after reloading YouTube TV."
     },
     "ryd": {
       "settings": "Return YouTube Dislike settings",
